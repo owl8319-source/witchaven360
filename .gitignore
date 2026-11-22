@@ -1,0 +1,12 @@
+build/
+# Witchaven's game data, which is Capstone's
+*.art
+*.ART
+*.map
+*.MAP
+joesnd
+JOESND
+songs
+SONGS
+*.smk
+*.SMK
