@@ -4413,17 +4413,8 @@ static void dorotatesprite(int sx, int sy, int z, short a, short picnum, signed 
 		if ((dastat&8) == 0)
 		{
 			if (widescreen) {
-#ifdef WITCHAVEN360
-				// Witchaven 360: the size and place a 4:3 screen of this height would give, so the weapons in the
-				// player's hands are as large as the game drew them, and run off the screen's edges as they did,
-				// not shrunk to the view's height with the edges of their pictures showing.
-				int w43 = scale(xdimen, ydim*4, xdim*3);
-				x = scale(w43,yxaspect,320);
-				sx = ((cx1+cx2+2)<<15)+scale(sx-(320<<15),w43,320);
-#else
 				x = ydimenscale;   //= scale(xdimen,yxaspect,320);
 				sx = ((cx1+cx2+2)<<15)+scale(sx-(320<<15),ydimen<<16,200*pixelaspect);
-#endif
 			} else {
 				x = xdimenscale;   //= scale(xdimen,yxaspect,320);
 				sx = ((cx1+cx2+2)<<15)+scale(sx-(320<<15),xdimen,320);

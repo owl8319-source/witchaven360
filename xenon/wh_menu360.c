@@ -378,7 +378,8 @@ void wh360_helppage(int page)
         HelpRow(6, ButtonsFor(PA_CENTRE, k, sizeof(k)), "Centre the view");
         HelpRow(7, ButtonsFor(PA_MAP, k, sizeof(k)), "Map");
         HelpRow(8, "D-pad up / down", "Zoom the map in / out");
-        HelpRow(9, "Start", "Menu");
+        if (xenon_pad_action(PAD_BACK) == PA_MAP) HelpRow(9, "Back + D-pad up / down", "Quick save / quick load");
+        HelpRow(10, "Start", "Menu");
         break;
     case 4:
         Heading(18, "flying");

@@ -10,6 +10,10 @@
 #include "osd.h"
 #include "startwin.h"
 #include "version.h"
+#ifdef WITCHAVEN360
+#include "wh_pad.h"
+#include "wh_devmenu.h"
+#endif
 
 int *animateptr[MAXANIMATES],
       animategoal[MAXANIMATES],
@@ -160,6 +164,16 @@ int nummoves;
 static unsigned int showfps, averagefps, framecnt, frameval[AVERAGEFRAMES];
 
 static int osdcmd_showfps(const osdfuncparm_t *parm);
+#ifdef WITCHAVEN360
+// The frame-rate counter, for the developer cheat menu (xenon/wh_devmenu.c): whether it's on, after turning it on or
+// off if 'toggle'.
+void wh360_drawhud(struct player *plr);
+void wh360_quick(struct player *plr);
+int wh360_showfps(int toggle) {
+    if (toggle) showfps = !showfps;
+    return showfps != 0;
+}
+#endif
 static int osdcmd_vidmode(const osdfuncparm_t *parm);
 static int osdcmd_setkeys(const osdfuncparm_t *parm);
 static int osdcmd_setting(const osdfuncparm_t *parm);
@@ -1184,6 +1198,12 @@ void drawscreen(struct player *plr, int dasmoothratio) {
         printext256(0L,0L,31,-1,fps,0);
     }
 
+#ifdef WITCHAVEN360
+    // With the status bar off, its figures small in the display's corners (whplr.c).
+    if (plr->screensize > 320 && plr->dimension == 3) wh360_drawhud(plr);
+    // The developer cheat menu (xenon/wh_devmenu.c), over the game, if open.
+    wh360_devmenu_draw();
+#endif
     nextpage();
 
     while (ready2send && totalclock >= ototalclock+TICSPERFRAME)
@@ -1536,11 +1556,20 @@ void playloop(void) {
 
         if(gameactivated == 0 || escapetomenu == 1) {
             exit=menuscreen(plr);
+#ifdef WITCHAVEN360
+            // Settings > Status bar: off, the view fills the screen (the PC's + past full size), whatever a saved game
+            // had.
+            plr->screensize = xenon_pad_status_bar() ? 320 : 328;
+#endif
             setviewport(plr->screensize);
             drawbackground();
             plr->z=sector[plr->sector].floorz-(PLAYERHEIGHT<<8);
         }
 
+#ifdef WITCHAVEN360
+        // A quick save or load the controller asked for (whmenu.c).
+        wh360_quick(plr);
+#endif
         olockclock = lockclock;
         if (networkmode == 0 || !netgame) {
             while (movefifoplc != movefifoend[0]) domovethings();

@@ -4,6 +4,9 @@
  *                                                                         *
  ***************************************************************************/
 #include "icorp.h"
+#ifdef WITCHAVEN360
+#include "wh_devmenu.h"
+#endif
 
 extern short lastbat;
 extern int difficulty;
@@ -2275,8 +2278,16 @@ void animateobjs(struct player *plr) {
 			else {
 				if ( rand()%100 > 70 ) {
 					if( rand()%100 > 50) {
+#ifdef WITCHAVEN360
+						// Not in the developer cheat menu's god mode (xenon/wh_devmenu.c).
+						if (!wh360_godmode()) {
+							plr->health=0;
+							healthpic(1);
+						}
+#else
 						plr->health=0;
 						healthpic(1);
+#endif
 					}
 					else {
 						armorpic(-(plr->armor));

@@ -2,9 +2,10 @@
 // jfbuild's SDL2 layer (jfbuild/src/sdlayer2.c) and provides the same functions (jfbuild/include/baselayer.h).
 //
 // Video: the engine draws each frame into `frame`, xres x yres bytes of palette indexes. showframe() turns them into
-// colours through the engine's current palette, uploads them into a texture and has the GPU draw it, point sampled,
-// on a quad in the middle of the 1280x720 display, as Heretic 360 does (Heretic 360's xenon/i_video.c). 320x200 and
-// 640x400 are shown 4:3, as on a PC's monitor; other modes keep square pixels, the engine correcting the aspect itself.
+// colours through the engine's current palette, uploads them into a texture and has the GPU draw it, point sampled or
+// smoothed (Settings > Smoothing, blit.frag), on a quad in the middle of the 1280x720 display, as Heretic 360 does
+// (Heretic 360's xenon/i_video.c). 320x200 and 640x400 are shown 4:3, as on a PC's monitor; other modes keep square
+// pixels, the engine correcting the aspect itself.
 // A 16:9 mode (854x480, 1280x720) is true widescreen: the engine draws the wider view, and the 640-wide menus and
 // status bar sit in its middle.
 //
@@ -38,6 +39,7 @@
 #include "osd.h"
 
 #include "xenonlayer.h"
+#include "wh_devmenu.h"
 
 int displaycnt = 1;
 
@@ -224,6 +226,12 @@ static SDL_Gamepad *gamepad = NULL;
 static int gamepad_initialized = 0;
 static int system_ui_was_open = 0;
 
+// The music, paused while the Guide is open (jfaudiolib's music.h, driver_opl.c).
+void MUSIC_Pause(void);
+void MUSIC_Continue(void);
+void OPLDrv_MIDI_Lock(void);
+void OPLDrv_MIDI_Unlock(void);
+
 static void OpenFirstGamepad(void)
 {
     SDL_JoystickID *ids;
@@ -371,7 +379,18 @@ static void ReadController(void)
     SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
 
     // Asked once a frame, controller or not (xsdk's docs/GUIDE.md).
-    system_ui_was_open = xsdk_system_ui_open() ? 1 : 0;
+    {
+        const int open = xsdk_system_ui_open() ? 1 : 0;
+        if (open != system_ui_was_open) {
+            // The game's clock stops behind the Guide (sampletimer); the music stops with it, and carries on where
+            // it was. Locked, as the music is played from the audio thread (driver_opl.c).
+            OPLDrv_MIDI_Lock();
+            if (open) MUSIC_Pause();
+            else MUSIC_Continue();
+            OPLDrv_MIDI_Unlock();
+        }
+        system_ui_was_open = open;
+    }
 
     if (!gamepad_initialized) {
         return;
@@ -447,8 +466,9 @@ void sampletimer(void)
 
     now = TimerTics();
     n = (int)(now - timerlastsample);
-    if (n > 0 && xenon_system_ui_open()) {
-        // The game's clock stands still while the Guide is open, so the game waits behind it, as a 360 game pauses.
+    if (n > 0 && (xenon_system_ui_open() || wh360_devmenu_active())) {
+        // The game's clock stands still while the Guide is open, so the game waits behind it, as a 360 game pauses;
+        // and while the developer cheat menu is (wh_devmenu.c).
         timerlastsample = now;
         n = 0;
     }
@@ -511,7 +531,10 @@ static XsdkShader pixel_shader;
 static volatile uint32_t *quad_vertices;
 static XsdkTexture frame_textures[FRAME_TEXTURES];
 static uint32_t frame_fences[FRAME_TEXTURES];
-static XsdkSamplerState frame_sampler;
+static XsdkSamplerState frame_sampler;          // point: Settings > Smoothing off
+static XsdkSamplerState frame_sampler_linear;   // linear: smooth and sharp
+// The size the frame is drawn at on the display, for the sharp smoothing.
+static int quad_drawn_width, quad_drawn_height;
 static uint32_t display_width;
 static uint32_t display_height;
 static unsigned int frame_count;
@@ -583,6 +606,12 @@ static int OpenGPU(void)
     }
 
     xsdk_texture_sampler_state(&frame_sampler, &sampler);
+    {
+        XsdkSampler linear = sampler;
+        linear.mag_filter = XSDK_FILTER_LINEAR;
+        linear.min_filter = XSDK_FILTER_LINEAR;
+        xsdk_texture_sampler_state(&frame_sampler_linear, &linear);
+    }
 
     printf("witchaven360: display %ux%u\n", (unsigned)display_width, (unsigned)display_height);
     gpu_open = 1;
@@ -627,6 +656,8 @@ static void WriteQuad(int width, int height)
         if (quad_height >= (int)display_height - 2) quad_height = (int)display_height;
     }
 
+    quad_drawn_width = quad_width;
+    quad_drawn_height = quad_height;
     printf("witchaven360: frame %dx%d, drawn %dx%d in the middle of %ux%u\n", width, height, quad_width, quad_height,
            (unsigned)display_width, (unsigned)display_height);
 
@@ -772,6 +803,8 @@ const char *getdisplayname(int display)
     return display == 0 ? "Xbox 360" : NULL;
 }
 
+static void LogFrameRate(void);
+
 void showframe(void)
 {
     uint32_t address;
@@ -827,7 +860,18 @@ void showframe(void)
     xsdk_gpu_set_shaders(&vertex_shader, &pixel_shader);
     xsdk_built_shader_set_literals(&blit_vert);
     xsdk_built_shader_set_literals(&blit_frag);
-    xsdk_gpu_set_texture(BLIT_FRAG_SAMPLER_0_0, texture, &frame_sampler);
+    {
+        // Settings > Smoothing (blit.frag): off point sampled, smooth and sharp linearly, sharp with how many screen
+        // pixels each of the frame's takes.
+        const int smoothing = xenon_pad_smoothing();
+        float size[4];
+        size[0] = (float)xres;
+        size[1] = (float)yres;
+        size[2] = smoothing == 2 && quad_drawn_width > xres ? (float)quad_drawn_width / (float)xres : 1.0f;
+        size[3] = smoothing == 2 && quad_drawn_height > yres ? (float)quad_drawn_height / (float)yres : 1.0f;
+        xsdk_gpu_set_pixel_constants(BLIT_FRAG_PUSH, size, BLIT_FRAG_PUSH_REGISTERS);
+        xsdk_gpu_set_texture(BLIT_FRAG_SAMPLER_0_0, texture, smoothing ? &frame_sampler_linear : &frame_sampler);
+    }
     xsdk_gpu_set_vertices(0, xsdk_gpu_address(quad_vertices), QUAD_BYTES);
     xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST, QUAD_VERTICES);
     // Copies the frame into the front buffer, then clears eDRAM to black for the next frame's bars.
@@ -841,6 +885,33 @@ void showframe(void)
     }
 
     frame_count++;
+    LogFrameRate();
+}
+
+// Every FRAME_RATE_LOG_MS, the frame rate since in the log: frames a second on average, and the slowest frame, with
+// the mode. So a session's log shows how a resolution runs, without the developer menu's counter on screen.
+#define FRAME_RATE_LOG_MS 30000
+
+static void LogFrameRate(void)
+{
+    static unsigned int since_ms = 0, last_ms = 0, frames = 0, slowest_ms = 0;
+    const unsigned int now = getticks();
+
+    if (since_ms == 0) {
+        since_ms = last_ms = now;
+        return;
+    }
+    if (now - last_ms > slowest_ms) slowest_ms = now - last_ms;
+    last_ms = now;
+    frames++;
+    if (now - since_ms >= FRAME_RATE_LOG_MS) {
+        printf("witchaven360: %dx%d, %u.%u frames a second over %u s, the slowest %u ms\n", xres, yres,
+               frames * 1000 / (now - since_ms), frames * 10000 / (now - since_ms) % 10, (now - since_ms) / 1000,
+               slowest_ms);
+        since_ms = now;
+        frames = 0;
+        slowest_ms = 0;
+    }
 }
 
 int setpalette(int start, int num, unsigned char *dapal)

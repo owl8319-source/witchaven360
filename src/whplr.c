@@ -7,6 +7,7 @@
 
 #ifdef WITCHAVEN360
 #include "wh_pad.h"
+#include "wh_devmenu.h"
 
 // Witchaven 360: how hard the controller kicks as each weapon strikes, and for how long (fist, knife, short sword,
 // morning star, sword, battle axe, bow, pike, magic sword, halberd).
@@ -1778,18 +1779,142 @@ void victory(void) {
 }
 
 #ifdef WITCHAVEN360
-// Witchaven 360: the weapon in the player's hands, on a screen wider than 4:3. The pictures were drawn for a 320-wide
-// screen, and are cut off where its edges were: a picture against the right edge would show that cut in the middle of
-// a widescreen display. So each is moved out as far as the screen is wider than 4:3: against the right edge, all the
-// way right; against the left, all the way left; between, in proportion to the space it leaves on each side, so a
-// swing moves smoothly from one to the other.
+// Witchaven 360: the weapon in the player's hands, on a screen wider than 4:3. The engine sizes the pictures to the
+// view's height (above the status bar, or the whole screen without it), so a swing's top stays on screen. They were
+// drawn for a 320-wide screen, and are cut off where its edges were: a picture against the right edge would show that
+// cut in the middle of a widescreen display. So each is moved out as far as the view is wider than 320 of the
+// pictures' columns: against the right edge, all the way right; against the left, all the way left; between, in
+// proportion to the space it leaves on each side, so a swing moves smoothly from one to the other.
+//
+// A few pictures (the pike's thrust, the bow drawn, a sword raised) run off both edges of the 320-wide screen at once,
+// so moving them can't hide either cut. Those are drawn from a copy widened by WH360_EXTEND columns each side
+// (wh360_widenedtile): past each edge, what crosses it carries on, at the slant it crosses at, its picture mirrored from
+// just inside the edge, so a shaft or blade runs on and an arm keeps its texture. (Something filling the edge from top
+// to bottom is left cut: mirrored, it would look like a second one.)
+#define WH360_EXTEND 124
+#define WH360_WIDENED 16
+
+static int wh360_opaque(const unsigned char *column, int y)
+{
+	return column[y] != 255;
+}
+
+static void wh360_widen(unsigned char *dst, int w, int h, int left)
+{
+	const int inner = 6;
+	const int edge = left ? WH360_EXTEND : WH360_EXTEND + w - 1;
+	const int dir = left ? -1 : 1;
+	const unsigned char *e = dst + edge * h;
+	const unsigned char *in = dst + (edge - dir * inner) * h;
+	int a = 0;
+
+	while (a < h) {
+		int b, a2, best = -1, k, y;
+		float centre, slope = 0.0f;
+
+		if (!wh360_opaque(e, a)) { a++; continue; }
+		for (b = a; b + 1 < h && wh360_opaque(e, b + 1); b++) ;
+		centre = (a + b) * 0.5f;
+
+		// The same thing a few columns in: the run there nearest this one, for the slant it crosses at.
+		for (a2 = 0; a2 < h; ) {
+			int b2;
+			if (!wh360_opaque(in, a2)) { a2++; continue; }
+			for (b2 = a2; b2 + 1 < h && wh360_opaque(in, b2 + 1); b2++) ;
+			if (b2 >= a - 3 * inner && a2 <= b + 3 * inner) {
+				const int c = (a2 + b2) / 2;
+				if (best < 0 || abs(c - (int)centre) < abs(best - (int)centre)) best = c;
+			}
+			a2 = b2 + 1;
+		}
+		if (best >= 0) {
+			slope = (centre - (float)best) / (float)inner;
+			if (slope > 2.5f) slope = 2.5f;
+			if (slope < -2.5f) slope = -2.5f;
+		}
+
+		if (b - a + 1 < h * 4 / 5) {
+			for (k = 1; k <= WH360_EXTEND; k++) {
+				const int shift = (int)(slope * (float)k + (slope < 0 ? -0.5f : 0.5f));
+				const int from = edge - dir * (k < w - 1 ? k : w - 1);
+				unsigned char *col = dst + (edge + dir * k) * h;
+				for (y = a; y <= b; y++) {
+					const int sy = y - shift, ny = y + shift;
+					if (sy >= 0 && sy < h && ny >= 0 && ny < h && dst[from * h + sy] != 255)
+						col[ny] = dst[from * h + sy];
+				}
+			}
+		}
+		a = b + 1;
+	}
+}
+
+// The widened copy of 'tilenum', made the first time it's asked for, in a tile number the game doesn't use; -1 if
+// there's no room.
+static short wh360_widenedtile(short tilenum)
+{
+	static short from[WH360_WIDENED], to[WH360_WIDENED];
+	static int count = 0;
+	unsigned char *copy, *dst;
+	int i, w, h;
+	short t;
+
+	for (i = 0; i < count; i++)
+		if (from[i] == tilenum) return to[i];
+	if (count == WH360_WIDENED) return -1;
+
+	for (t = MAXTILES - 1; t > 0; t--) {
+		if (tilesizx[t] > 0 || tilesizy[t] > 0) continue;
+		for (i = 0; i < count && to[i] != t; i++) ;
+		if (i == count) break;
+	}
+	if (t <= 0) return -1;
+
+	w = tilesizx[tilenum];
+	h = tilesizy[tilenum];
+	if (waloff[tilenum] == 0) loadtile(tilenum);
+	if (waloff[tilenum] == 0) return -1;
+	// Copied out first: the cache may move the picture when the new one is made.
+	copy = malloc((size_t)w * h);
+	if (!copy) return -1;
+	memcpy(copy, (void *)waloff[tilenum], (size_t)w * h);
+
+	dst = (unsigned char *)allocatepermanenttile(t, w + 2 * WH360_EXTEND, h);
+	if (!dst) {
+		free(copy);
+		return -1;
+	}
+	memset(dst, 255, (size_t)(w + 2 * WH360_EXTEND) * h);
+	memcpy(dst + WH360_EXTEND * h, copy, (size_t)w * h);
+	free(copy);
+	wh360_widen(dst, w, h, 1);
+	wh360_widen(dst, w, h, 0);
+	picanm[t] = 0;
+
+	from[count] = tilenum;
+	to[count] = t;
+	count++;
+	printf("witchaven360: weapon picture %d widened for widescreen, as %d\n", tilenum, t);
+	return t;
+}
+
 static void wh360_weaponsprite(int thex, int they, short tilenum, signed char shade, char stat,
 		unsigned char dapalnum)
 {
+	if (widescreen && (stat & 2) && !(stat & 8) && tilenum >= 0 && tilenum < MAXTILES && tilesizx[tilenum] >= 320
+			&& thex <= 0 && thex + tilesizx[tilenum] >= 320) {
+		const short widened = wh360_widenedtile(tilenum);
+		if (widened >= 0) {
+			overwritesprite(thex - WH360_EXTEND, they, widened, shade, stat, dapalnum);
+			return;
+		}
+	}
 	if (widescreen && (stat & 2) && tilenum >= 0 && tilenum < MAXTILES && tilesizx[tilenum] > 0) {
 		int width = windowx2 - windowx1 + 1;
-		int w43 = scale(width, ydim * 4, xdim * 3);
-		int margin = w43 > 0 ? scale(320, width - w43, 2 * w43) : 0;
+		// The engine draws a picture's column ydimen/240 pixels wide in widescreen (engine.c's rotatesprite), so the
+		// view is width * 240 / height columns across.
+		const int height = windowy2 - windowy1 + 1;
+		int margin = height > 0 ? scale(width, 120, height) - 160 : 0;
 		int left = (stat & 8) ? thex - tilesizx[tilenum] : thex;
 		int gapl = left > 0 ? left : 0;
 		int gapr = 320 - (left + tilesizx[tilenum]);
@@ -3902,12 +4027,68 @@ void orbpic(int currentorb) {
 
 }
 
+#ifdef WITCHAVEN360
+// Witchaven 360: with Settings > Status bar off (screensize past 320), what the status bar showed, small, in the
+// display's bottom corners, from the status bar's own pictures: health (red while poisoned) and armour at the left;
+// arrows or pikes with the bow or pike; at the right, the potion chosen and how many, and the spell chosen and how
+// many. Drawn each frame (whaven.c's drawscreen), on Witchaven's 320x200 screen widened to the display's edges.
+void wh360_drawhud(struct player *plr) {
+	const int flags = 2+8+16;
+	const int w43 = ydim * 4 / 3;
+	const int edge = xdim > w43 ? scale(xdim - w43, 320, 2 * w43) : 0;
+	const int left = 4 - edge, right = 316 + edge, bottom = 196;
+	static const short flasks[MAXPOTIONS] = { FLASKBLUE, FLASKGREEN, FLASKOCHRE, FLASKRED, FLASKTAN };
+	char text[16];
+	int x;
+
+	// Health, and armour, each in its dark box, in the status bar's big gold figures.
+	rotatesprite(left<<16,(bottom-21)<<16,65536,0,HEALTHBACKPIC,0,0,flags,0,0,xdim-1,ydim-1);
+	sprintf(text,"%d",plr->health);
+	fancyfontscreen(left+2,bottom-19,BGZERO-26,text,poisoned == 1 ? 6 : 0);
+	rotatesprite((left+47)<<16,(bottom-21)<<16,65536,0,HEALTHBACKPIC,0,0,flags,0,0,xdim-1,ydim-1);
+	sprintf(text,"%d",plr->armor);
+	fancyfontscreen(left+49,bottom-19,BGZERO-26,text,0);
+
+	// Arrows or pikes left, with the bow or a pike to throw.
+	if (selectedgun == 6 || (selectedgun == 7 && plr->weapon[7] == 2)) {
+		const int ammo = plr->ammo[selectedgun] > 0 ? plr->ammo[selectedgun] : 0;
+		rotatesprite((left+94)<<16,(bottom-14)<<16,65536,0,selectedgun == 6 ? ARROWS : PIKES,0,0,flags,0,0,xdim-1,ydim-1);
+		sprintf(text,"%d",ammo);
+		fancyfontscreen(left+133,bottom-12,SCOREFONT-26,text,0);
+	}
+
+	// The spell chosen: its page of the spell book, half size, and how many casts are left.
+	x = right;
+	if (currentorb >= 0 && currentorb < MAXNUMORBS && plr->orb[currentorb]) {
+		x -= 38;
+		rotatesprite(x<<16,(bottom-23)<<16,32768,0,SPELLBOOKBACK,0,0,flags,0,0,xdim-1,ydim-1);
+		rotatesprite(x<<16,(bottom-19)<<16,32768,0,spellbookanim[currentorb][8].daweaponframe,0,0,flags,0,0,xdim-1,ydim-1);
+		sprintf(text,"%d",plr->orbammo[currentorb] > 0 ? plr->orbammo[currentorb] : 0);
+		x -= 4 + 5 * (int)strlen(text);
+		fancyfontscreen(x,bottom-10,SCOREFONT-26,text,0);
+		x -= 16;
+	}
+
+	// The potion chosen, and how many of it.
+	if (currentpotion >= 0 && currentpotion < MAXPOTIONS && plr->potion[currentpotion] > 0) {
+		sprintf(text,"%d",plr->potion[currentpotion]);
+		x -= 5 * (int)strlen(text);
+		fancyfontscreen(x,bottom-10,SCOREFONT-26,text,0);
+		x -= 12;
+		rotatesprite(x<<16,(bottom-21)<<16,65536,0,flasks[currentpotion],0,0,flags,0,0,xdim-1,ydim-1);
+	}
+}
+#endif
+
 void healthpic(int hp) {
 
 	struct player *plr;
 
 	plr=&player[pyrn];
 #ifdef WITCHAVEN360
+	// Witchaven 360: in the developer cheat menu's god mode, nothing hurts (xenon/wh_devmenu.c).
+	if (hp < 0 && wh360_godmode())
+		return;
 	// Witchaven 360: the controller rumbles as the player is hurt, harder the more it hurts; lightly for the point at
 	// a time lava and the like take.
 	if (hp < 0 && plr->health > 0) {

@@ -23,7 +23,10 @@
 //   Right stick click   centre the view
 //   Back            map
 //   Start           menu (Escape), always
+//   Back + D-pad up / down   quick save / quick load (the map then opens on letting Back go, not pressing it)
 //   (End flying, the PC's End key, on no button unless given one; flying down to the ground lands too, whinp.c)
+//   (Quick save and Quick load can be given buttons of their own too.)
+//   LB and RB act 120 ms late, so pressing both for the developer menu doesn't change weapon first.
 //
 // With the map open, D-pad up and down zoom it in and out, whatever they do in the game.
 //
@@ -35,11 +38,17 @@
 
 #include <SDL3/SDL.h>
 
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "xenonlayer.h"
 #include "wh_pad.h"
+#include "wh_devmenu.h"
+
+// Quick save and load are the game's (whmenu.c), done between its frames.
+extern void wh360_quick_ask(int load);
 
 extern void initjstick(void);
 extern int selectedgun;
@@ -90,11 +99,11 @@ static const char *const button_ids[PAD_BUTTONS] = {
 static const char *const action_names[PA_COUNT] = {
     "Nothing", "Attack", "Cast spell", "Use", "Jump / fly up", "Crouch / fly down", "Drink potion",
     "Previous weapon", "Next weapon", "Previous spell", "Next spell", "Previous potion", "Next potion",
-    "Run", "Centre view", "Map", "End flying",
+    "Run", "Centre view", "Map", "End flying", "Quick save", "Quick load",
 };
 static const char *const action_ids[PA_COUNT] = {
     "nothing", "attack", "cast", "use", "jump", "crouch", "drink", "prevweapon", "nextweapon", "prevspell",
-    "nextspell", "prevpotion", "nextpotion", "run", "centre", "map", "endfly",
+    "nextspell", "prevpotion", "nextpotion", "run", "centre", "map", "endfly", "quicksave", "quickload",
 };
 
 static const int default_layout[PAD_BUTTONS] = {
@@ -121,6 +130,14 @@ static int layout_loaded = 0;
 static int invert_look = 0;
 // Settings > Vibration.
 static int vibration = 1;
+// Settings > Look sensitivity, 1 to 10: how fast the right stick turns and looks, 7 as the game had it.
+static int look_sensitivity = DEFAULT_LOOK_SENSITIVITY;
+// Settings > Stick dead zone, 0 to 30 per cent of the sticks' travel, by 5s: how far they go before they move.
+static int dead_zone = DEFAULT_DEAD_ZONE;
+// Settings > Status bar (on, or off for the view to fill the screen; whaven.c), and Settings > Smoothing (0 off,
+// 1 smooth, 2 sharp; xenonlayer.c, blit.frag). Not the controller's, but kept with its settings, in controller.cfg.
+static int status_bar = 1;
+static int smoothing = 0;
 // The rumble going now: how strong, and until when (getticks()); rumble_until 0 when none.
 static int rumble_strength = 0;
 static unsigned int rumble_until = 0;
@@ -135,8 +152,13 @@ static int was_held[PB_COUNT];
 
 // The keys the controller is holding down, so they can be let go.
 static unsigned char keys_down[256];
-// Keys pressed for one update only (choosing a weapon or a spell), let go on the next.
-static unsigned char keys_tapped[256];
+// Keys pressed only until the game has read them once (choosing a weapon or a spell): let go once a game tic has run
+// since (game_tics past the number kept here), or after TAP_LONGEST_MS without one. The game reads them in its tics
+// (whinp.c's getinput), not every frame, so a key let go on the next frame could be missed.
+static unsigned int keys_tapped[256];
+static unsigned int keys_tapped_ms[256];
+static unsigned int game_tics = 0;
+#define TAP_LONGEST_MS 250
 
 // Menu directions from the left stick, as held buttons.
 static int stick_up, stick_down, stick_left, stick_right;
@@ -222,7 +244,55 @@ void wh360_rumble(int strength, int ms)
     StartRumble(strength, ms);
 }
 
-// The buttons as the game starts; invert look and vibration stay as they are.
+int xenon_pad_look_sensitivity(void)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    return look_sensitivity;
+}
+
+void xenon_pad_set_look_sensitivity(int value)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    look_sensitivity = value < 1 ? 1 : value > 10 ? 10 : value;
+}
+
+int xenon_pad_dead_zone(void)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    return dead_zone;
+}
+
+void xenon_pad_set_dead_zone(int percent)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    dead_zone = percent < 0 ? 0 : percent > 30 ? 30 : percent / 5 * 5;
+}
+
+int xenon_pad_status_bar(void)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    return status_bar;
+}
+
+void xenon_pad_set_status_bar(int on)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    status_bar = on ? 1 : 0;
+}
+
+int xenon_pad_smoothing(void)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    return smoothing;
+}
+
+void xenon_pad_set_smoothing(int mode)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    smoothing = mode < 0 ? 0 : mode > 2 ? 2 : mode;
+}
+
+// The buttons as the game starts; the other settings stay as they are.
 void xenon_pad_reset_layout(void)
 {
     memcpy(layout, default_layout, sizeof(layout));
@@ -238,6 +308,10 @@ void xenon_pad_load_layout(void)
     xenon_pad_reset_layout();
     invert_look = 0;
     vibration = 1;
+    look_sensitivity = DEFAULT_LOOK_SENSITIVITY;
+    dead_zone = DEFAULT_DEAD_ZONE;
+    status_bar = 1;
+    smoothing = 0;
 
     f = fopen(LAYOUT_FILE, "r");
     if (!f) return;
@@ -245,13 +319,29 @@ void xenon_pad_load_layout(void)
     while (fgets(line, sizeof(line), f)) {
         int button = -1, action = -1;
 
-        if (sscanf(line, " %63[a-z] = %63[a-z]", key, value) != 2) continue;
+        if (sscanf(line, " %63[a-z] = %63[a-z0-9]", key, value) != 2) continue;
         if (!strcmp(key, "invertlook")) {
             invert_look = !strcmp(value, "on");
             continue;
         }
         if (!strcmp(key, "vibration")) {
             vibration = strcmp(value, "off") != 0;
+            continue;
+        }
+        if (!strcmp(key, "looksensitivity")) {
+            xenon_pad_set_look_sensitivity(atoi(value));
+            continue;
+        }
+        if (!strcmp(key, "deadzone")) {
+            xenon_pad_set_dead_zone(atoi(value));
+            continue;
+        }
+        if (!strcmp(key, "statusbar")) {
+            status_bar = strcmp(value, "off") != 0;
+            continue;
+        }
+        if (!strcmp(key, "smoothing")) {
+            smoothing = !strcmp(value, "smooth") ? 1 : !strcmp(value, "sharp") ? 2 : 0;
             continue;
         }
         for (i = 0; i < PAD_BUTTONS; i++) if (!strcmp(key, button_ids[i])) button = i;
@@ -277,6 +367,10 @@ void xenon_pad_save_layout(void)
     for (i = 0; i < PAD_BUTTONS; i++) fprintf(f, "%s = %s\n", button_ids[i], action_ids[layout[i]]);
     fprintf(f, "invertlook = %s\n", invert_look ? "on" : "off");
     fprintf(f, "vibration = %s\n", vibration ? "on" : "off");
+    fprintf(f, "looksensitivity = %d\n", look_sensitivity);
+    fprintf(f, "deadzone = %d\n", dead_zone);
+    fprintf(f, "statusbar = %s\n", status_bar ? "on" : "off");
+    fprintf(f, "smoothing = %s\n", smoothing == 1 ? "smooth" : smoothing == 2 ? "sharp" : "off");
     fclose(f);
 }
 
@@ -287,6 +381,7 @@ void xenon_pad_gametic(void)
 {
     last_game_tic_ms = getticks();
     had_game_tic = 1;
+    game_tics++;
 }
 
 static void KeyDown(int code)
@@ -307,7 +402,8 @@ static void KeyTap(int code)
 {
     if (code <= 0 || code > 255) return;
     KeyDown(code);
-    keys_tapped[code] = 1;
+    keys_tapped[code] = game_tics + 1;  // 0 is none
+    keys_tapped_ms[code] = getticks();
 }
 
 // A key held while the button is: down as it's pressed, up as it's let go.
@@ -400,11 +496,113 @@ static void DoAction(struct player *plr, int button, int action)
         case PA_NEXT_WEAPON: if (Pressed(button)) ChangeWeapon(plr, 1); break;
         case PA_PREV_SPELL:  if (Pressed(button)) ChangeSpell(plr, -1); break;
         case PA_NEXT_SPELL:  if (Pressed(button)) ChangeSpell(plr, 1); break;
+        case PA_QUICK_SAVE:  if (Pressed(button)) wh360_quick_ask(0); break;
+        case PA_QUICK_LOAD:  if (Pressed(button)) wh360_quick_ask(1); break;
         default: break;
     }
 }
 
 static int zoom_in_down = 0, zoom_out_down = 0;
+
+
+// LB and RB: how long one waits before what it does in the game happens, so that pressing both together, to open the
+// developer menu with Back, doesn't change weapon twice first. Pressed apart, each happens SHOULDER_WAIT_MS late (or
+// as it's let go, if sooner); pressed within that of each other, neither happens.
+#define SHOULDER_WAIT_MS 120
+
+typedef struct {
+    unsigned int since;  // getticks() when pressed, 0 when not held
+    int cancelled;       // pressed with the other: does nothing until let go
+    int done;            // has gone down to the game this press
+    int was;             // what the game was given last time
+} shoulder_t;
+
+static shoulder_t shoulders[2];
+
+// What the game's given for shoulder button 'b' (PAD_LB or PAD_RB), 1 or 0.
+static int ShoulderHeld(int b, unsigned int now)
+{
+    shoulder_t *s = &shoulders[b == PAD_RB];
+    shoulder_t *other = &shoulders[b != PAD_RB];
+    int give = 0;
+
+    if (held[b]) {
+        if (s->since == 0) {
+            s->since = now ? now : 1;
+            s->cancelled = s->done = 0;
+        }
+        if (!s->done && other->since != 0 && !other->done &&
+            (s->since > other->since ? s->since - other->since : other->since - s->since) < SHOULDER_WAIT_MS) {
+            s->cancelled = other->cancelled = 1;
+        }
+        give = !s->cancelled && (s->done || now - s->since >= SHOULDER_WAIT_MS);
+    } else if (s->since != 0) {
+        // Let go before its wait was up: a tap, given now, let go of next time.
+        give = !s->cancelled && !s->done;
+        s->since = 0;
+    }
+    if (give) s->done = 1;
+    return give;
+}
+
+// Back, while it's the map's: the map on letting it go, unless D-pad up (quick save) or down (quick load) was pressed
+// with it, or LB and RB were held for the developer menu.
+static unsigned int back_since = 0;
+static int back_used = 0;
+static int back_was = 0;
+
+static int BackHeld(void)
+{
+    int give = 0;
+
+    if (held[PAD_BACK]) {
+        if (back_since == 0) {
+            back_since = 1;
+            back_used = 0;
+        }
+        if (held[PAD_LB] && held[PAD_RB]) back_used = 1;
+        if (held[PAD_DUP] && !was_held[PAD_DUP]) {
+            wh360_quick_ask(0);
+            back_used = 1;
+        }
+        if (held[PAD_DDOWN] && !was_held[PAD_DDOWN]) {
+            wh360_quick_ask(1);
+            back_used = 1;
+        }
+    } else if (back_since != 0) {
+        give = !back_used;
+        back_since = 0;
+    }
+    return give;
+}
+
+// A stick, from -32768 to 32767 each way, as the game takes it: nothing within the dead zone, all round (a circle,
+// not a square, so a diagonal isn't cut short); from its edge to full tilt, 0 to 32767. The right stick's 'curved',
+// the square of how far it's pushed, so a small push turns slowly and full tilt still turns fast, then times 'gain',
+// Settings > Look sensitivity's (0.4 to 1.3, 1 as the game had it).
+static void Stick(int x, int y, int curved, float gain, int *out_x, int *out_y)
+{
+    const float edge = (float)dead_zone * 32767.0f / 100.0f;
+    const float fx = (float)x, fy = (float)y;
+    const float length = sqrtf(fx * fx + fy * fy);
+    float amount, scale, ox, oy;
+
+    if (length <= edge || length < 1.0f) {
+        *out_x = *out_y = 0;
+        return;
+    }
+
+    amount = (length - edge) / (32767.0f - edge);
+    if (amount > 1.0f) amount = 1.0f;
+    if (curved) amount *= amount;
+    amount *= gain;
+
+    scale = amount * 32767.0f / length;
+    ox = fx * scale;
+    oy = fy * scale;
+    *out_x = ox > 32767.0f ? 32767 : ox < -32767.0f ? -32767 : (int)ox;
+    *out_y = oy > 32767.0f ? 32767 : oy < -32767.0f ? -32767 : (int)oy;
+}
 
 // A key held while 'down', pressed and let go of as that changes.
 static void SetZoom(int code, int *state, int down)
@@ -418,7 +616,8 @@ static void SetZoom(int code, int *state, int down)
 static void GameControls(void)
 {
     struct player *plr = &player[pyrn];
-    int i, map_open;
+    const unsigned int now = getticks();
+    int i, map_open, back_is_map;
 
     if (!joystick_on) {
         // The game reads the sticks only with its joystick on (whaven.c's option[3]).
@@ -427,18 +626,39 @@ static void GameControls(void)
     }
 
     if (xenon_pad_connected() && !xenon_system_ui_open()) {
-        joyaxis[0] = xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTX);
-        joyaxis[1] = xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTY);
-        joyaxis[2] = xenon_pad_axis(SDL_GAMEPAD_AXIS_RIGHTX);
-        joyaxis[3] = xenon_pad_axis(SDL_GAMEPAD_AXIS_RIGHTY);
-        if (invert_look) joyaxis[3] = joyaxis[3] == -32768 ? 32767 : -joyaxis[3];
+        // getinput takes them as they are (whinp.c): the dead zone and the right stick's curve and sensitivity are
+        // here.
+        Stick(xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTX), xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTY), 0, 1.0f,
+              &joyaxis[0], &joyaxis[1]);
+        Stick(xenon_pad_axis(SDL_GAMEPAD_AXIS_RIGHTX), xenon_pad_axis(SDL_GAMEPAD_AXIS_RIGHTY), 1,
+              0.3f + 0.1f * (float)look_sensitivity, &joyaxis[2], &joyaxis[3]);
+        if (invert_look) joyaxis[3] = -joyaxis[3];
     } else {
         joyaxis[0] = joyaxis[1] = joyaxis[2] = joyaxis[3] = 0;
     }
 
     // With the map open, D-pad up and down zoom it in and out (the PC's + and -) in place of what they do in the game.
     map_open = plr->dimension == 2;
+    back_is_map = layout[PAD_BACK] == PA_MAP;
     for (i = 0; i < PAD_BUTTONS; i++) {
+        // LB and RB a moment late (ShoulderHeld), and Back, as the map, on letting it go (BackHeld): given to the
+        // game as pressed and let go of like any other button.
+        if (i == PAD_LB || i == PAD_RB || (i == PAD_BACK && back_is_map)) {
+            const int h = held[i], w = was_held[i];
+            int *was = i == PAD_BACK ? &back_was : &shoulders[i == PAD_RB].was;
+            held[i] = i == PAD_BACK ? BackHeld() : ShoulderHeld(i, now);
+            was_held[i] = *was;
+            DoAction(plr, i, layout[i]);
+            *was = held[i];
+            held[i] = h;
+            was_held[i] = w;
+            continue;
+        }
+        // With Back held (the map's), D-pad up and down are quick save and quick load (BackHeld).
+        if (back_is_map && (i == PAD_DUP || i == PAD_DDOWN) && (held[PAD_BACK] || was_held[PAD_BACK]) &&
+            held[i]) {
+            continue;
+        }
         if (map_open && (i == PAD_DUP || i == PAD_DDOWN)) {
             if (was_held[i]) {
                 // Let go of what it does in the game, if it was held as the map opened.
@@ -497,15 +717,63 @@ static void MenuControls(void)
     SetKey(SC_ESCAPE, held[PAD_B] || held[PB_START]);
 }
 
+// The developer cheat menu (wh_devmenu.c): LB + RB + Back held this long in a level opens it.
+#define DEVMENU_HOLD_MS 1000
+static unsigned int devmenu_combo_since = 0;
+static int devmenu_combo_used = 0;
+static int devmenu_stick_was = 0;
+
+// Watches for LB + RB + Back held in a level, and runs the developer menu while it's open: D-pad or left stick up and
+// down choose, A selects, B closes. True while it's open, the game's controls then doing nothing.
+static int DevMenuControls(void)
+{
+    const int combo = held[PAD_LB] && held[PAD_RB] && held[PAD_BACK];
+    const unsigned int now = getticks();
+    int up, down;
+
+    if (!combo) {
+        devmenu_combo_since = 0;
+        devmenu_combo_used = 0;
+    } else if (devmenu_combo_since == 0) {
+        devmenu_combo_since = now ? now : 1;
+    } else if (!devmenu_combo_used && !wh360_devmenu_active() && now - devmenu_combo_since >= DEVMENU_HOLD_MS) {
+        devmenu_combo_used = 1;
+        xenon_releaseallkeys();
+        zoom_in_down = zoom_out_down = 0;
+        StopRumble();
+        wh360_devmenu_open();
+        memcpy(was_held, held, sizeof(held));
+        return 1;
+    }
+
+    if (!wh360_devmenu_active()) return 0;
+
+    // The game's controls don't run while it's open: forget LB, RB and Back's presses, as let go.
+    memset(shoulders, 0, sizeof(shoulders));
+    back_since = 0;
+    back_was = 0;
+
+    MenuStick();
+    up = (held[PAD_DUP] && !was_held[PAD_DUP]) || (stick_up && !devmenu_stick_was);
+    down = (held[PAD_DDOWN] && !was_held[PAD_DDOWN]) || (stick_down && !devmenu_stick_was);
+    devmenu_stick_was = stick_up || stick_down;
+    wh360_devmenu_input(up, down, held[PAD_A] && !was_held[PAD_A], held[PAD_B] && !was_held[PAD_B]);
+    memcpy(was_held, held, sizeof(held));
+    // Closed: back in the game, whose tics haven't run while it was open, so B isn't taken for the menus' Escape.
+    if (!wh360_devmenu_active()) last_game_tic_ms = getticks();
+    return 1;
+}
+
 void xenon_pad_update(void)
 {
     int code, in_game;
 
     if (!layout_loaded) xenon_pad_load_layout();
 
-    // Keys tapped last time go up now.
+    // Keys tapped go up once the game has read them.
     for (code = 1; code < 256; code++) {
-        if (keys_tapped[code]) {
+        if (keys_tapped[code] && (game_tics + 1 > keys_tapped[code] ||
+                                  getticks() - keys_tapped_ms[code] >= TAP_LONGEST_MS)) {
             keys_tapped[code] = 0;
             KeyUp(code);
         }
@@ -513,12 +781,16 @@ void xenon_pad_update(void)
 
     ReadButtons();
 
-    in_game = had_game_tic && (getticks() - last_game_tic_ms) < GAME_TIC_HOLD_MS;
+    // The developer menu stops the game's tics, but the game's still on screen behind it.
+    in_game = wh360_devmenu_active() || (had_game_tic && (getticks() - last_game_tic_ms) < GAME_TIC_HOLD_MS);
     if (in_game != last_in_game) {
         // Between the game and the menus, let every key go, so nothing stays held from the other side. The buttons
         // still held count as pressed again on the new side only once they're let go and pressed.
         xenon_releaseallkeys();
         zoom_in_down = zoom_out_down = 0;
+        memset(shoulders, 0, sizeof(shoulders));
+        back_since = 0;
+        back_was = 0;
         memcpy(was_held, held, sizeof(held));
         last_in_game = in_game;
         // And a rumble from the game stops as the menus open.
@@ -537,7 +809,7 @@ void xenon_pad_update(void)
     }
 
     if (in_game) {
-        GameControls();
+        if (!DevMenuControls()) GameControls();
     } else {
         MenuControls();
     }

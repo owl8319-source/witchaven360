@@ -235,7 +235,12 @@ getinput(void)
 		oldbstatus=bstatus;
 	}
 	if (jstickenabled) {
+#ifdef WITCHAVEN360
+		// The dead zone, and the right stick's curve and sensitivity, are xenon/wh_pad.c's (Settings).
+		const int deadzone = 0;
+#else
 		const int deadzone = 4096;
+#endif
 		if (joynumaxes == 2) {
 			jangvel  = joyaxis[0];
 			jvel     =-joyaxis[1];
@@ -554,6 +559,9 @@ void processinput(struct player *plr) {
 
 void
 syncprocessinput(short snum) {
+#ifdef WITCHAVEN360
+	static int wh360_landed=0;
+#endif
 	int goalz,hihit,hiz,lohit,loz,xvect,yvect;
 	int tics;
 	int oldposx, oldposy;
@@ -716,6 +724,13 @@ syncprocessinput(short snum) {
 		}
 	}
 
+#ifdef WITCHAVEN360
+	// Having landed by flying down (below), the button held (fly down is crouch too) doesn't crouch until let go of.
+	if (wh360_landed) {
+		if (k.crouch || k.flydn) k.crouch=0;
+		else wh360_landed=0;
+	}
+#endif
 	if (k.crouch) {
 		if(goalz<((sector[plr->sector].floorz)-(plr->height>>3)))
 			goalz+=(24<<8);
@@ -734,8 +749,14 @@ syncprocessinput(short snum) {
 #ifdef WITCHAVEN360
 	// Witchaven 360: flying down to the ground lands, ending the fly spell (the PC's End key), as the controller has
 	// no key to spare for it unless given one in Settings > Button layout.
-	if (plr->orbactive[5] > 0 && k.flydn && plr->z >= loz-(plr->height<<8))
+	if (plr->orbactive[5] > 0 && k.flydn && plr->z >= loz-(plr->height<<8)) {
 		plr->orbactive[5]=-1;
+		// Standing, at once: not on down past it and back up, nor crouched while the button's still held.
+		plr->z=loz-(plr->height<<8);
+		plr->hvel=0;
+		plr->fallz=0;
+		wh360_landed=1;
+	}
 #endif
 	if (!onground && plr->onsomething) {
 		if (plr->fallz > 32768L) {

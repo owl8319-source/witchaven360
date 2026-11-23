@@ -17,6 +17,8 @@ enum {
     PA_PREV_WEAPON, PA_NEXT_WEAPON, PA_PREV_SPELL, PA_NEXT_SPELL, PA_PREV_POTION, PA_NEXT_POTION,
     PA_RUN, PA_CENTRE, PA_MAP,
     PA_END_FLYING,
+    PA_QUICK_SAVE,
+    PA_QUICK_LOAD,
     PA_COUNT,
 };
 
@@ -32,6 +34,20 @@ void xenon_pad_set_vibration(int on);
 // A rumble of the controller: strength 0 to 100, for ms milliseconds. Only while playing and with vibration on; a
 // weaker or equal one doesn't restart or cut short one still going (the game asks again each tic of a swing).
 void wh360_rumble(int strength, int ms);
+// Settings > Look sensitivity (1 to 10, DEFAULT_LOOK_SENSITIVITY to start; 7 turns as the game did) and Settings > Stick
+// dead zone (0 to 30 per cent, by 5s), kept in controller.cfg.
+#define DEFAULT_LOOK_SENSITIVITY 5
+#define DEFAULT_DEAD_ZONE 15
+int xenon_pad_look_sensitivity(void);
+void xenon_pad_set_look_sensitivity(int value);
+int xenon_pad_dead_zone(void);
+void xenon_pad_set_dead_zone(int percent);
+// Settings > Status bar (on, or off for a view filling the screen) and Settings > Smoothing (0 off, 1 smooth,
+// 2 sharp), kept in controller.cfg too.
+int xenon_pad_status_bar(void);
+void xenon_pad_set_status_bar(int on);
+int xenon_pad_smoothing(void);
+void xenon_pad_set_smoothing(int mode);
 void xenon_pad_reset_layout(void);
 void xenon_pad_load_layout(void);
 void xenon_pad_save_layout(void);

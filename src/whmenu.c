@@ -82,7 +82,13 @@ struct savedgame {
      char name[20];
 };
 
+#ifdef WITCHAVEN360
+// Witchaven 360: and a sixth, the quick save's (wh360_quick), not in the menu's five.
+#define WH360_QUICKSLOT MAXSAVEDGAMES
+struct savedgame savedgamenames[MAXSAVEDGAMES+1];
+#else
 struct savedgame savedgamenames[MAXSAVEDGAMES];
+#endif
 
 
 static void menubackground(void) {
@@ -784,6 +790,63 @@ skip:
     updatepics();
 
 }
+
+#ifdef WITCHAVEN360
+// Witchaven 360: quick save and quick load, asked for by the controller (xenon/wh_pad.c: Back with D-pad up or down,
+// or a button given them in Settings > Button layout) and done between frames by the game's loop (whaven.c's
+// playloop), as the menu's Load / Save does them: into and from a slot of its own, svgm5.map and svgn5.dat, so the
+// menu's five are left alone.
+extern char displaybuf[];
+extern int displaytime;
+static int wh360_quick_asked = 0;
+
+void wh360_quick_ask(int load) {
+    wh360_quick_asked = load ? 2 : 1;
+}
+
+static void wh360_quick_message(const char *text) {
+    strcpy(displaybuf, text);
+    displaytime = 360;
+}
+
+void wh360_quick(struct player *plr) {
+    const int asked = wh360_quick_asked;
+
+    wh360_quick_asked = 0;
+    if (!asked || netgame || gameactivated == 0) return;
+
+    if (asked == 1) {
+        const short screensize = plr->screensize;
+        if (plr->health <= 0) {
+            wh360_quick_message("can't save now");
+            return;
+        }
+        strcpy(savedgamenames[WH360_QUICKSLOT].name, "quick save");
+        sprintf(tempbuf, "svgm%d.map", WH360_QUICKSLOT);
+        saveboard(tempbuf, &plr->x, &plr->y, &plr->z, &plr->ang, &plr->sector);
+        savedgamename(WH360_QUICKSLOT);
+        plr->screensize = screensize;  // savedgamename saves it as 320
+        wh360_quick_message("game saved");
+        return;
+    }
+
+    if (!savedgamedat(WH360_QUICKSLOT)) {
+        wh360_quick_message("no quick save yet");
+        return;
+    }
+    sprintf(boardname, "svgm%d.map", WH360_QUICKSLOT);
+    sprintf(loadgamename, "svgn%d.dat", WH360_QUICKSLOT);
+    loadedgame = 1;
+    gameactivated = 1;
+    startnewgame(plr);
+    // As playloop does on leaving the menu.
+    plr->screensize = xenon_pad_status_bar() ? 320 : 328;
+    setviewport(plr->screensize);
+    drawbackground();
+    plr->z = sector[plr->sector].floorz - (PLAYERHEIGHT << 8);
+    wh360_quick_message("game loaded");
+}
+#endif
 
 void loadgame(struct player *plr) {
 
@@ -1835,6 +1898,58 @@ static const char *configitem_controller(enum configverb verb, int param) {
         else if (verb==draw) return xenon_pad_invert_look() ? "On" : "Off";
         return NULL;
     }
+    if (param == 5) {
+        // Look sensitivity, 1 to 10.
+        int v = xenon_pad_look_sensitivity();
+        if (verb==draw) {
+            static char text[8];
+            snprintf(text, sizeof(text), "%d", v);
+            return text;
+        }
+        if (verb==increase || verb==activate) v = v >= 10 ? (verb==activate ? 1 : 10) : v + 1;
+        else if (verb==decrease) v = v > 1 ? v - 1 : 1;
+        if (v != xenon_pad_look_sensitivity()) {
+            xenon_pad_set_look_sensitivity(v);
+            xenon_pad_save_layout();
+        }
+        return NULL;
+    }
+    if (param == 6) {
+        // Stick dead zone, 0 to 30 per cent by 5s.
+        int v = xenon_pad_dead_zone();
+        if (verb==draw) {
+            static char text[8];
+            snprintf(text, sizeof(text), "%d%%", v);
+            return text;
+        }
+        if (verb==increase || verb==activate) v = v >= 30 ? (verb==activate ? 0 : 30) : v + 5;
+        else if (verb==decrease) v = v > 0 ? v - 5 : 0;
+        if (v != xenon_pad_dead_zone()) {
+            xenon_pad_set_dead_zone(v);
+            xenon_pad_save_layout();
+        }
+        return NULL;
+    }
+    if (param == 7) {
+        // Status bar: on, or off for the view to fill the screen (whaven.c's playloop, on leaving the menu).
+        if (verb==activate || verb==increase || verb==decrease) {
+            xenon_pad_set_status_bar(!xenon_pad_status_bar());
+            xenon_pad_save_layout();
+        }
+        else if (verb==draw) return xenon_pad_status_bar() ? "On" : "Off";
+        return NULL;
+    }
+    if (param == 8) {
+        // Smoothing: off, smooth or sharp (xenon/blit.frag).
+        static const char *const names[] = { "Off", "Smooth", "Sharp" };
+        int v = xenon_pad_smoothing();
+        if (verb==draw) return names[v];
+        if (verb==increase || verb==activate) v = (v + 1) % 3;
+        else if (verb==decrease) v = (v + 2) % 3;
+        xenon_pad_set_smoothing(v);
+        xenon_pad_save_layout();
+        return NULL;
+    }
     if (param == 4) {
         // Brightness: the game's own (the PC's F10), 0 to 8, through the palette; kept in whaven.ini.
         int b = gbrightness;
@@ -1917,7 +2032,27 @@ void configmenu(void) {
             .label = "Brightness",
             .value = { .callback = { configitem_controller, 4 } }
         },
+        {
+            .type = callback,
+            .label = "Smoothing",
+            .value = { .callback = { configitem_controller, 8 } }
+        },
+        {
+            .type = callback,
+            .label = "Status bar",
+            .value = { .callback = { configitem_controller, 7 } }
+        },
         { .type = spacer },
+        {
+            .type = callback,
+            .label = "Look sensitivity",
+            .value = { .callback = { configitem_controller, 5 } }
+        },
+        {
+            .type = callback,
+            .label = "Stick dead zone",
+            .value = { .callback = { configitem_controller, 6 } }
+        },
         {
             .type = callback,
             .label = "Invert look",

@@ -33,6 +33,9 @@ void xenon_releaseallkeys(void);
 // Once a game tic, from getinput() (whinp.c): the game, not a menu, is reading the controls.
 void xenon_pad_gametic(void);
 
+// Settings > Smoothing (wh_pad.c, kept in controller.cfg): 0 off, 1 smooth, 2 sharp.
+int xenon_pad_smoothing(void);
+
 #ifdef __cplusplus
 }
 #endif
