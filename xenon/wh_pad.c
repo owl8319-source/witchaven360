@@ -130,8 +130,10 @@ static int layout_loaded = 0;
 static int invert_look = 0;
 // Settings > Vibration.
 static int vibration = 1;
-// Settings > Look sensitivity, 1 to 10: how fast the right stick turns and looks, 7 as the game had it.
-static int look_sensitivity = DEFAULT_LOOK_SENSITIVITY;
+// Settings > Turn speed and Look speed, 1 to 10: how fast the right stick turns, across, and looks up and down; 7 as the
+// game had it (as Heretic 360 has them).
+static int turn_speed = DEFAULT_TURN_SPEED;
+static int look_speed = DEFAULT_LOOK_SPEED;
 // Settings > Stick dead zone, 0 to 30 per cent of the sticks' travel, by 5s: how far they go before they move.
 static int dead_zone = DEFAULT_DEAD_ZONE;
 // Settings > Status bar (on, or off for the view to fill the screen; whaven.c), and Settings > Smoothing (0 off,
@@ -244,16 +246,28 @@ void wh360_rumble(int strength, int ms)
     StartRumble(strength, ms);
 }
 
-int xenon_pad_look_sensitivity(void)
+int xenon_pad_turn_speed(void)
 {
     if (!layout_loaded) xenon_pad_load_layout();
-    return look_sensitivity;
+    return turn_speed;
 }
 
-void xenon_pad_set_look_sensitivity(int value)
+void xenon_pad_set_turn_speed(int value)
 {
     if (!layout_loaded) xenon_pad_load_layout();
-    look_sensitivity = value < 1 ? 1 : value > 10 ? 10 : value;
+    turn_speed = value < 1 ? 1 : value > 10 ? 10 : value;
+}
+
+int xenon_pad_look_speed(void)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    return look_speed;
+}
+
+void xenon_pad_set_look_speed(int value)
+{
+    if (!layout_loaded) xenon_pad_load_layout();
+    look_speed = value < 1 ? 1 : value > 10 ? 10 : value;
 }
 
 int xenon_pad_dead_zone(void)
@@ -308,7 +322,8 @@ void xenon_pad_load_layout(void)
     xenon_pad_reset_layout();
     invert_look = 0;
     vibration = 1;
-    look_sensitivity = DEFAULT_LOOK_SENSITIVITY;
+    turn_speed = DEFAULT_TURN_SPEED;
+    look_speed = DEFAULT_LOOK_SPEED;
     dead_zone = DEFAULT_DEAD_ZONE;
     status_bar = 1;
     smoothing = 0;
@@ -328,8 +343,12 @@ void xenon_pad_load_layout(void)
             vibration = strcmp(value, "off") != 0;
             continue;
         }
-        if (!strcmp(key, "looksensitivity")) {
-            xenon_pad_set_look_sensitivity(atoi(value));
+        if (!strcmp(key, "turnspeed")) {
+            xenon_pad_set_turn_speed(atoi(value));
+            continue;
+        }
+        if (!strcmp(key, "lookspeed")) {
+            xenon_pad_set_look_speed(atoi(value));
             continue;
         }
         if (!strcmp(key, "deadzone")) {
@@ -367,7 +386,8 @@ void xenon_pad_save_layout(void)
     for (i = 0; i < PAD_BUTTONS; i++) fprintf(f, "%s = %s\n", button_ids[i], action_ids[layout[i]]);
     fprintf(f, "invertlook = %s\n", invert_look ? "on" : "off");
     fprintf(f, "vibration = %s\n", vibration ? "on" : "off");
-    fprintf(f, "looksensitivity = %d\n", look_sensitivity);
+    fprintf(f, "turnspeed = %d\n", turn_speed);
+    fprintf(f, "lookspeed = %d\n", look_speed);
     fprintf(f, "deadzone = %d\n", dead_zone);
     fprintf(f, "statusbar = %s\n", status_bar ? "on" : "off");
     fprintf(f, "smoothing = %s\n", smoothing == 1 ? "smooth" : smoothing == 2 ? "sharp" : "off");
@@ -578,9 +598,9 @@ static int BackHeld(void)
 
 // A stick, from -32768 to 32767 each way, as the game takes it: nothing within the dead zone, all round (a circle,
 // not a square, so a diagonal isn't cut short); from its edge to full tilt, 0 to 32767. The right stick's 'curved',
-// the square of how far it's pushed, so a small push turns slowly and full tilt still turns fast, then times 'gain',
-// Settings > Look sensitivity's (0.4 to 1.3, 1 as the game had it).
-static void Stick(int x, int y, int curved, float gain, int *out_x, int *out_y)
+// the square of how far it's pushed, so a small push turns slowly and full tilt still turns fast, then across times
+// 'gain_x' and up and down times 'gain_y', Settings > Turn speed's and Look speed's (0.4 to 1.3, 1 as the game had it).
+static void Stick(int x, int y, int curved, float gain_x, float gain_y, int *out_x, int *out_y)
 {
     const float edge = (float)dead_zone * 32767.0f / 100.0f;
     const float fx = (float)x, fy = (float)y;
@@ -595,11 +615,9 @@ static void Stick(int x, int y, int curved, float gain, int *out_x, int *out_y)
     amount = (length - edge) / (32767.0f - edge);
     if (amount > 1.0f) amount = 1.0f;
     if (curved) amount *= amount;
-    amount *= gain;
-
     scale = amount * 32767.0f / length;
-    ox = fx * scale;
-    oy = fy * scale;
+    ox = fx * scale * gain_x;
+    oy = fy * scale * gain_y;
     *out_x = ox > 32767.0f ? 32767 : ox < -32767.0f ? -32767 : (int)ox;
     *out_y = oy > 32767.0f ? 32767 : oy < -32767.0f ? -32767 : (int)oy;
 }
@@ -628,10 +646,10 @@ static void GameControls(void)
     if (xenon_pad_connected() && !xenon_system_ui_open()) {
         // getinput takes them as they are (whinp.c): the dead zone and the right stick's curve and sensitivity are
         // here.
-        Stick(xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTX), xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTY), 0, 1.0f,
+        Stick(xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTX), xenon_pad_axis(SDL_GAMEPAD_AXIS_LEFTY), 0, 1.0f, 1.0f,
               &joyaxis[0], &joyaxis[1]);
         Stick(xenon_pad_axis(SDL_GAMEPAD_AXIS_RIGHTX), xenon_pad_axis(SDL_GAMEPAD_AXIS_RIGHTY), 1,
-              0.3f + 0.1f * (float)look_sensitivity, &joyaxis[2], &joyaxis[3]);
+              0.3f + 0.1f * (float)turn_speed, 0.3f + 0.1f * (float)look_speed, &joyaxis[2], &joyaxis[3]);
         if (invert_look) joyaxis[3] = -joyaxis[3];
     } else {
         joyaxis[0] = joyaxis[1] = joyaxis[2] = joyaxis[3] = 0;

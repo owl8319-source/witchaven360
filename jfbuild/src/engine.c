@@ -5638,6 +5638,14 @@ void drawrooms(int daposx, int daposy, int daposz,
 	globalposx = daposx; globalposy = daposy; globalposz = daposz;
 	globalang = (daang&2047);
 
+#ifdef WITCHAVEN360
+	// Witchaven 360: in widescreen, looking up and down as far as on a 4:3 screen of the same height. Scaled by the
+	// wider view's width (xdimenscale), it went a third further, past the top of the sky's picture, which showed as a
+	// band across the top of the screen.
+	if (widescreen)
+		globalhoriz = mulscale16(dahoriz-100,scale(xdimenscale,ydim*4,xdim*3))+(ydimen>>1);
+	else
+#endif
 	globalhoriz = mulscale16(dahoriz-100,xdimenscale)+(ydimen>>1);
 	globaluclip = (0-globalhoriz)*xdimscale;
 	globaldclip = (ydimen-globalhoriz)*xdimscale;

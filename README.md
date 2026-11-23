@@ -115,7 +115,8 @@ D-pad or left stick chooses, A selects, B closes. It isn't in the menus or Setti
 - Sound effects, and the music played on an emulated OPL3 chip, as on an AdLib or Sound Blaster card.
 - The opening film.
 - Settings, on Y at the main menu: the sound and music volumes, the resolution, brightness, smoothing, the status
-  bar, look sensitivity (with a gentler curve on the right stick), the sticks' dead zone, invert look, vibration, the
+  bar, turn speed and look speed (the right stick across and up and down, each with a gentler curve), the sticks' dead
+  zone, invert look, vibration, the
   button layout and a picture of the controls. The version is in the bottom right of the main menu.
 - Help pages on the controls with the controller's buttons, as the layout has them, in place of the PC's keys.
 - The map zooms with the D-pad; flying down to the ground lands; the Guide pauses the game and its music.
@@ -140,7 +141,7 @@ D-pad or left stick chooses, A selects, B closes. It isn't in the menus or Setti
     (written by its own thread once a second, so the game never waits on the drive to log a line) and start.
   - `wh_pad.c`: the controller turned into the keys and stick movement Witchaven reads, one layout in the game and
     another in the menus (it knows which by whether the game has read the controls in the last 200 ms); the button
-    layout, invert look, vibration, look sensitivity, the dead zone, the status bar and smoothing, kept in
+    layout, invert look, vibration, turn and look speed, the dead zone, the status bar and smoothing, kept in
     `controller.cfg`; quick save and load; the cheat menu's buttons.
   - `wh_menu360.c`: the Settings > Button layout and Settings > Controls pages, the Help pages on the controls, and
     the version on the main menu.
@@ -163,7 +164,8 @@ All under the `WITCHAVEN360` define.
   the BSDs', macOS's or Windows'.
 - `jfbuild/src/engine.c`: `loadtables` checks its sine and angle tables' checksums against the tables as a
   little-endian machine holds them, the 360 being big-endian; `buildsetlogfile` opens no second log (everything
-  printed is already in `witchaven.log`, and that one wrote to the drive a line at a time).
+  printed is already in `witchaven.log`, and that one wrote to the drive a line at a time); `drawrooms` looks up and
+  down in widescreen as far as on a 4:3 screen of the same height (a third further went past the top of the sky).
 - `src/whsndmod.c`: the tables of where each sound and song is in `joesnd` and `songs` are little-endian, as the PC
   wrote them, and are read so.
 - `jfaudiolib/src/assmisc.h`: the byte order from the compiler too, so the MIDI player reads the songs right.
@@ -189,6 +191,8 @@ All under the `WITCHAVEN360` define.
 
 ## Changes
 
+- **0.3.1:** separate Turn speed and Look speed settings in place of Look sensitivity; looking up and down in
+  widescreen as far as in 4:3, so the sky no longer shows a band at the top when looking straight up.
 - **0.3:** look sensitivity and dead-zone settings, with a gentler right stick; smoothing (off, smooth, sharp); the
   status bar can be turned off, with a small HUD; a developer cheat menu (LB + RB + Back); quick save and quick load
   (Back + D-pad up / down); the weapons sized to the view, so a swing's top stays on screen, and the widest pictures

@@ -34,12 +34,15 @@ void xenon_pad_set_vibration(int on);
 // A rumble of the controller: strength 0 to 100, for ms milliseconds. Only while playing and with vibration on; a
 // weaker or equal one doesn't restart or cut short one still going (the game asks again each tic of a swing).
 void wh360_rumble(int strength, int ms);
-// Settings > Look sensitivity (1 to 10, DEFAULT_LOOK_SENSITIVITY to start; 7 turns as the game did) and Settings > Stick
-// dead zone (0 to 30 per cent, by 5s), kept in controller.cfg.
-#define DEFAULT_LOOK_SENSITIVITY 5
+// Settings > Turn speed and Look speed (1 to 10; 7 turns and looks as the game did) and Settings > Stick dead zone
+// (0 to 30 per cent, by 5s), kept in controller.cfg.
+#define DEFAULT_TURN_SPEED 6
+#define DEFAULT_LOOK_SPEED 4
 #define DEFAULT_DEAD_ZONE 15
-int xenon_pad_look_sensitivity(void);
-void xenon_pad_set_look_sensitivity(int value);
+int xenon_pad_turn_speed(void);
+void xenon_pad_set_turn_speed(int value);
+int xenon_pad_look_speed(void);
+void xenon_pad_set_look_speed(int value);
 int xenon_pad_dead_zone(void);
 void xenon_pad_set_dead_zone(int percent);
 // Settings > Status bar (on, or off for a view filling the screen) and Settings > Smoothing (0 off, 1 smooth,

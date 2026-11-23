@@ -1898,9 +1898,10 @@ static const char *configitem_controller(enum configverb verb, int param) {
         else if (verb==draw) return xenon_pad_invert_look() ? "On" : "Off";
         return NULL;
     }
-    if (param == 5) {
-        // Look sensitivity, 1 to 10.
-        int v = xenon_pad_look_sensitivity();
+    if (param == 5 || param == 9) {
+        // Turn speed (5) and Look speed (9), 1 to 10: the right stick across and up and down.
+        int v = param == 5 ? xenon_pad_turn_speed() : xenon_pad_look_speed();
+        const int was = v;
         if (verb==draw) {
             static char text[8];
             snprintf(text, sizeof(text), "%d", v);
@@ -1908,8 +1909,9 @@ static const char *configitem_controller(enum configverb verb, int param) {
         }
         if (verb==increase || verb==activate) v = v >= 10 ? (verb==activate ? 1 : 10) : v + 1;
         else if (verb==decrease) v = v > 1 ? v - 1 : 1;
-        if (v != xenon_pad_look_sensitivity()) {
-            xenon_pad_set_look_sensitivity(v);
+        if (v != was) {
+            if (param == 5) xenon_pad_set_turn_speed(v);
+            else xenon_pad_set_look_speed(v);
             xenon_pad_save_layout();
         }
         return NULL;
@@ -2045,8 +2047,13 @@ void configmenu(void) {
         { .type = spacer },
         {
             .type = callback,
-            .label = "Look sensitivity",
+            .label = "Turn speed",
             .value = { .callback = { configitem_controller, 5 } }
+        },
+        {
+            .type = callback,
+            .label = "Look speed",
+            .value = { .callback = { configitem_controller, 9 } }
         },
         {
             .type = callback,

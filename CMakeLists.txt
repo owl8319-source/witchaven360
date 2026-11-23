@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.25)
 project(witchaven360 C)
 
 # Keep the same as WITCHAVEN360_VERSION below and xsdk_add_xex's VERSION.
-set(WITCHAVEN360_VERSION "0.3")
+set(WITCHAVEN360_VERSION "0.3.1")
 
 find_package(SDL3 CONFIG REQUIRED)
 
@@ -129,4 +129,4 @@ target_link_options(witchaven PRIVATE
 # Writes witchaven_shaders.h, with blit_vert and blit_frag.
 xsdk_add_shaders(witchaven xenon/blit.vert xenon/blit.frag)
 # A title ID of its own ("WH36") and the name Aurora and the dashboard show.
-xsdk_add_xex(witchaven TITLE_ID 0x57483336 NAME "Witchaven" VERSION 0.3.0.0)
+xsdk_add_xex(witchaven TITLE_ID 0x57483336 NAME "Witchaven" VERSION 0.3.1.0)
