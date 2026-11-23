@@ -28,7 +28,12 @@ int escapetomenu=0;
 int selectedgun;
 int  difficulty=2;
 
+#ifdef WITCHAVEN360
+// Witchaven 360: widescreen to start with, the 16:9 display's shape at 480 lines.
+int xdimgame = 854, ydimgame = 480, bppgame = 8;
+#else
 int xdimgame = 640, ydimgame = 480, bppgame = 8;
+#endif
 int forcesetup = 1;
 int numlevels;
 
@@ -1438,6 +1443,21 @@ int app_main(int argc,const char * const argv[]) {
 }
 
 
+#ifdef WITCHAVEN360
+// Witchaven 360: in a widescreen mode the 320x200 screen sits in the middle, and the status bar (and, with a smaller
+// view, the border around it) leave black at the sides. Fills them with the game's own border, the riveted planks of
+// BACKGROUND, a shade darker so the bar stands out: rows of it from 'top' (in the 200-line screen's units) down, left
+// and right of the middle screen only, within the clipping rectangle given in pixels.
+static void fillwidesides(int top, int cx1, int cy1, int cx2, int cy2) {
+    int y;
+    if (xdim * 3 <= ydim * 4 || cx1 > cx2 || cy1 > cy2) return;
+    for (y = top; y < 200; y += tilesizy[BACKGROUND]) {
+        rotatesprite(-320<<16,y<<16,65536L,0,BACKGROUND,6,0,2+8+16+64+128,cx1,cy1,cx2,cy2);
+        rotatesprite(320<<16,y<<16,65536L,0,BACKGROUND,6,0,2+8+16+64+128,cx1,cy1,cx2,cy2);
+    }
+}
+#endif
+
 void drawbackground(void) {
     struct player *plr;
 
@@ -1454,6 +1474,16 @@ void drawbackground(void) {
         rotatesprite(0,0,65536L,0,BACKGROUND,0,0,2+8+16+64+128,0,windowy2+1,xdim-1,ydim-1);
     }
     rotatesprite(0,(200-46)<<16,65536L,0,NEWSTATUSBAR,0,0,2+8+16+64+128,0,0,xdim-1,ydim-1);
+#ifdef WITCHAVEN360
+    if(plr->screensize < 320) {
+        fillwidesides(0,0,0,xdim-1,windowy1-1);
+        fillwidesides(0,0,windowy1,windowx1-1,windowy2);
+        fillwidesides(0,windowx2+1,windowy1,xdim-1,windowy2);
+        fillwidesides(0,0,windowy2+1,xdim-1,ydim-1);
+    } else {
+        fillwidesides(200-46,0,0,xdim-1,ydim-1);
+    }
+#endif
     updatepics();
 }
 

@@ -5,6 +5,21 @@
 
 #include "icorp.h"
 
+#ifdef WITCHAVEN360
+#include "wh_pad.h"
+
+// Witchaven 360: how hard the controller kicks as each weapon strikes, and for how long (fist, knife, short sword,
+// morning star, sword, battle axe, bow, pike, magic sword, halberd).
+static const unsigned char wh360_weaponkick[10][2] = {
+	{ 25, 90 }, { 20, 80 }, { 30, 100 }, { 45, 140 }, { 35, 110 },
+	{ 50, 150 }, { 25, 80 }, { 40, 130 }, { 45, 140 }, { 50, 150 },
+};
+// And as each spell is cast (scare, night vision, freeze, magic arrow, open doors, fly, fireball, nuke).
+static const unsigned char wh360_spellkick[8][2] = {
+	{ 20, 120 }, { 15, 100 }, { 30, 150 }, { 30, 150 }, { 20, 120 }, { 20, 120 }, { 45, 200 }, { 70, 350 },
+};
+#endif
+
 extern short gametype;
 
 
@@ -1254,6 +1269,9 @@ void swingdaweapon(struct player *plr) {
 		shootgun( plr, daang, 10);
 		playsound_loc(S_THROWPIKE,plr->x,plr->y);
 		hasshot=1;
+#ifdef WITCHAVEN360
+		wh360_rumble(35, 110);
+#endif
 		return;
 	}
 
@@ -1300,6 +1318,11 @@ void swingdaweapon(struct player *plr) {
 	  break;
 
    }
+
+#ifdef WITCHAVEN360
+	if (selectedgun >= 0 && selectedgun < 10)
+		wh360_rumble(wh360_weaponkick[selectedgun][0], wh360_weaponkick[selectedgun][1]);
+#endif
 
 }
 
@@ -2422,6 +2445,11 @@ void castaorb( struct player *plr ) {
 				playsound_loc(S_SPELL1,plr->x,plr->y);
 		break;
 	}
+
+#ifdef WITCHAVEN360
+	if (currentorb >= 0 && currentorb < 8)
+		wh360_rumble(wh360_spellkick[currentorb][0], wh360_spellkick[currentorb][1]);
+#endif
 
 }
 
@@ -3831,6 +3859,15 @@ void healthpic(int hp) {
 	struct player *plr;
 
 	plr=&player[pyrn];
+#ifdef WITCHAVEN360
+	// Witchaven 360: the controller rumbles as the player is hurt, harder the more it hurts; lightly for the point at
+	// a time lava and the like take.
+	if (hp < 0 && plr->health > 0) {
+		int hurt = -hp < 100 ? -hp : 100;
+		if (hurt <= 2) wh360_rumble(25, 120);
+		else wh360_rumble(35 + hurt, 150 + hurt * 3);
+	}
+#endif
 	plr->health+=hp;
 
 	if(plr->health < 0)

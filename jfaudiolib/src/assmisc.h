@@ -21,7 +21,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef __ASSMISC_H
 #define __ASSMISC_H
 
-#ifdef __POWERPC__
+// Witchaven 360: any big-endian machine, as GCC says (the Xbox 360's PowerPC doesn't define __POWERPC__, which is
+// Apple's), so a MIDI file's "MThd" and "MTrk" are recognised there.
+#if defined(__POWERPC__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 #define LITTLE16(s) SWAP16(s)
 #define LITTLE32(s) SWAP32(s)
 static inline unsigned short SWAP16(unsigned short s)

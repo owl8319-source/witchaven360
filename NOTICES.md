@@ -34,6 +34,19 @@ its `driver_sdl.c`, under the same licence.
 `libsmacker/`, Copyright (C) 2012-2021 Greg Kennedy, under the GNU Lesser General Public License, version 2.1 or
 later (`libsmacker/COPYING`).
 
+## Nuked OPL3
+
+The music's OPL3 chip emulator (`opl/opl3.c`, `opl/opl3.h`, `opl/wf_rom.h`), Copyright (C) 2013-2020 Nuke.YKT, with
+changes by Tony Gies (Nuked-OPL3-fast), as Heretic 360 has it, under the GNU Lesser General Public License, version 2.1
+or later.
+
+## The controller picture
+
+`art/360_controller.svg`, drawn into the game as `xenon/controls_art.h`: "360 controller.svg" by Alphathon,
+https://commons.wikimedia.org/wiki/File:360_controller.svg, under Creative Commons Attribution-ShareAlike 3.0
+(https://creativecommons.org/licenses/by-sa/3.0/). Changed: labels, pointer lines and the Xbox logo removed, body
+filled grey. Xbox and Xbox 360 are trademarks of Microsoft, which has nothing to do with this port.
+
 ## SDL 3 (SDL-xenon)
 
 https://github.com/xenosworks/SDL-xenon, under the zlib licence:

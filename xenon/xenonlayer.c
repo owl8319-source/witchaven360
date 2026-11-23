@@ -5,6 +5,8 @@
 // colours through the engine's current palette, uploads them into a texture and has the GPU draw it, point sampled,
 // on a quad in the middle of the 1280x720 display, as Heretic 360 does (Heretic 360's xenon/i_video.c). 320x200 and
 // 640x400 are shown 4:3, as on a PC's monitor; other modes keep square pixels, the engine correcting the aspect itself.
+// A 16:9 mode (854x480, 1280x720) is true widescreen: the engine draws the wider view, and the 640-wide menus and
+// status bar sit in its middle.
 //
 // Input: the controller is read here, through SDL3, and handed to xenon/wh_pad.c (xenon_pad_update), which turns it
 // into the keys and stick movement the game reads. There's no keyboard or mouse.
@@ -616,6 +618,8 @@ static void WriteQuad(int width, int height)
     if (quad_width > (int)display_width) {
         quad_width = (int)display_width;
         quad_height = (int)display_width * shown_height / width;
+        // 854x480 is a hair wider than 16:9; it fills the display rather than leave a line unlit.
+        if (quad_height >= (int)display_height - 2) quad_height = (int)display_height;
     }
 
     printf("witchaven360: frame %dx%d, drawn %dx%d in the middle of %ux%u\n", width, height, quad_width, quad_height,
@@ -667,13 +671,22 @@ static int MakeFrameTextures(int width, int height)
     return 0;
 }
 
+// The modes the settings menu offers: 4:3 as Witchaven had them, and 16:9, widescreen: 854x480, and 1280x720, the
+// display's own (four times the drawing of 640x480; whether the console keeps up is for trying). All are
+// "fullscreen": there are no windows, and the settings menu's Display stays at Fullscreen.
+static const int console_modes[][2] = {
+    { 320, 200 }, { 640, 400 }, { 640, 480 }, { 854, 480 }, { 1280, 720 },
+};
+
 void getvalidmodes(void)
 {
+    unsigned i;
+
     if (validmodecnt) return;
 
-    // 8-bit modes up to the display's 1280x720, "fullscreen" and "windowed" alike: they're shown the same.
-    addstandardvalidmodes(MAX_FRAME_WIDTH, MAX_FRAME_HEIGHT, 8, 1, 0, 0, -1);
-    addstandardvalidmodes(MAX_FRAME_WIDTH, MAX_FRAME_HEIGHT, 8, 0, 0, 0, -1);
+    for (i = 0; i < sizeof console_modes / sizeof console_modes[0]; i++) {
+        addvalidmode(console_modes[i][0], console_modes[i][1], 8, 1, 0, 0, -1);
+    }
     sortvalidmodes();
 }
 
@@ -681,7 +694,8 @@ int setvideomode(int xdim, int ydim, int bitspp, int fullsc)
 {
     int i, j, pitch;
 
-    if ((fullsc == fullscreen) && (xdim == xres) && (ydim == yres) && (bitspp == bpp) && !videomodereset) {
+    if ((xdim == xres) && (ydim == yres) && (bitspp == bpp) && !videomodereset) {
+        fullscreen = 1;
         OSD_ResizeDisplay(xres, yres);
         return 0;
     }
@@ -731,7 +745,10 @@ int setvideomode(int xdim, int ydim, int bitspp, int fullsc)
     xres = xdim;
     yres = ydim;
     bpp = bitspp;
-    fullscreen = fullsc;
+    // Always fullscreen, whatever whaven.ini says: the settings menu looks the mode up among the fullscreen ones, and
+    // a "windowed" mode isn't in its list (with jfwhaven's default of windowed, changing the resolution crashed).
+    (void)fullsc;
+    fullscreen = 1;
 
     videomodereset = 0;
     if (baselayer_videomodedidchange) baselayer_videomodedidchange();

@@ -5,6 +5,10 @@
 
 #include "icorp.h"
 
+#ifdef WITCHAVEN360
+#include "wh_pad.h"
+#endif
+
 //extern int poisoned;
 //extern int poisontime;
 
@@ -199,6 +203,10 @@ void processobjs(struct player *plr) {
 			 dz=abs((plr->z>>8)-(sprite[i].z>>8));  // z distance to sprite
 			 dh=tilesizy[sprite[i].picnum]>>1;       // height of sprite
 			 if (dx+dy < PICKDISTANCE && dz-dh <= PICKHEIGHT) {
+#ifdef WITCHAVEN360
+					// Witchaven 360: a light rumble when something is picked up (the sprite taken from the map).
+					const int wh360_there = sprite[i].statnum != MAXSTATUS;
+#endif
 					switch (sprite[i].picnum) {
 					case HELMET:
 							strcpy(displaybuf,"Hero Time");
@@ -1120,6 +1128,10 @@ void processobjs(struct player *plr) {
 							healthpic(-1);
 					break;
 					}
+#ifdef WITCHAVEN360
+					if (wh360_there && sprite[i].statnum == MAXSTATUS)
+						wh360_rumble(20, 90);
+#endif
 			 }
 			 i=nexti;
 	  }

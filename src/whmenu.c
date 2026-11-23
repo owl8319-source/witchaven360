@@ -5,6 +5,10 @@
 *********************************************************************/
 
 #include "icorp.h"
+#ifdef WITCHAVEN360
+#include "wh_pad.h"
+#include "wh_xam.h"
+#endif
 #include "osd.h"
 
 
@@ -240,7 +244,12 @@ int menuscreen(struct player *plr) {
     int select=0;
     short redpicnum;
     int goaltime;
+#ifdef WITCHAVEN360
+    // Witchaven 360: the controller's Y is the keyboard's "/" here (xenon/wh_pad.c).
+    const char settingsstr[] = "Press Y for settings";
+#else
     const char settingsstr[] = "Press / for settings";
+#endif
     void configmenu(void);
 
 
@@ -285,8 +294,15 @@ int menuscreen(struct player *plr) {
             redpicnum=NEWGAMEGREEN+select;
             menuwritesprite(redpic[select].x,redpic[select].y,redpicnum,0,0,0);
         }
+#ifdef WITCHAVEN360
+        // Witchaven 360: a line up, to leave the bottom right for the port's version.
+        printext256(xdim-(svgaxoff>>16)-8*sizeof(settingsstr)-18+2,ydim-36+2,2,-1,settingsstr,2);
+        printext256(xdim-(svgaxoff>>16)-8*sizeof(settingsstr)-18,ydim-36,29,-1,settingsstr,2);
+        wh360_drawversion();
+#else
         printext256(xdim-(svgaxoff>>16)-8*sizeof(settingsstr)-18+2,ydim-18+2,2,-1,settingsstr,2);
         printext256(xdim-(svgaxoff>>16)-8*sizeof(settingsstr)-18,ydim-18,29,-1,settingsstr,2);
+#endif
 
         nextpage();
 
@@ -916,6 +932,49 @@ void savegametext(int select) {
 
     strcpy(temp,"-");
 
+#ifdef WITCHAVEN360
+    // Witchaven 360: the name from the console's keyboard (xenon/wh_xam.c), the save screen drawn behind it while
+    // it's up. Its name to start with: the save's own, or "save" and its number. Cancelled, nothing is saved; if the
+    // keyboard can't open, the save takes that name.
+    {
+        char name[11];
+        int opened, result = 1;
+
+        if (strcmp(savedgamenames[select].name,"empty") && strcmp(savedgamenames[select].name,"EMPTY")) {
+            strncpy(name,savedgamenames[select].name,sizeof(name)-1);
+            name[sizeof(name)-1]='\0';
+        }
+        else snprintf(name,sizeof(name),"save %d",select+1);
+
+        opened = wh360_keyboard_start(name, (int)sizeof(name)-1);
+        while (opened && (result = wh360_keyboard_poll(name, (int)sizeof(name))) == 0) {
+            handleevents();
+
+            menubackground();
+            menuwritesprite(138,84,SAVENUMBERS,0,0,0);
+            menuwritesprite(188,50,SAVEPIC,0,0,0);
+            for(i=0;i<MAXSAVEDGAMES;i++) {
+                strcpy(tempbuf, i == select ? "-" : savedgamenames[i].name);
+                fancyfont(154,81+(i*17),THEFONT,tempbuf,i == select ? 7 : 0);
+            }
+            nextpage();
+        }
+
+        if (result < 0) {
+            exit=1;
+        }
+        else {
+            if (!name[0]) snprintf(name,sizeof(name),"save %d",select+1);
+            strcpy(savedgamenames[select].name,name);
+            sprintf(tempbuf,"svgm%d.map",select);
+            saveboard(tempbuf,&plr->x,&plr->y,&plr->z,&plr->ang,&plr->sector);
+            savedgamename(select);
+            exit=2;
+        }
+        keystatus[1]=keystatus[0x1c]=keystatus[0x9c]=0;
+        (void)j; (void)temp; (void)typemessageleng;
+    }
+#else
     while( !exit ) {
         handleevents();
 
@@ -990,6 +1049,8 @@ void savegametext(int select) {
             keystatus[0x1c]=keystatus[0x9c]=0;
         }
     }
+
+#endif
 
     if( exit == 2 ) {
         keystatus[0x1c]=keystatus[0x9c]=0;
@@ -1754,6 +1815,35 @@ static const char *configitem_setkeys(enum configverb verb, int param) {
     return NULL;
 };
 
+#ifdef WITCHAVEN360
+// Witchaven 360: the controller's pages (xenon/wh_menu360.c).
+static const char *configitem_controller(enum configverb verb, int param) {
+    if (param == 2) {
+        // Invert look: the right stick's up and down the other way round, kept in controller.cfg.
+        if (verb==activate || verb==increase || verb==decrease) {
+            xenon_pad_set_invert_look(!xenon_pad_invert_look());
+            xenon_pad_save_layout();
+        }
+        else if (verb==draw) return xenon_pad_invert_look() ? "On" : "Off";
+        return NULL;
+    }
+    if (param == 3) {
+        // Vibration: the controller rumbles when hit, striking, casting and picking things up; kept in controller.cfg.
+        if (verb==activate || verb==increase || verb==decrease) {
+            xenon_pad_set_vibration(!xenon_pad_vibration());
+            xenon_pad_save_layout();
+        }
+        else if (verb==draw) return xenon_pad_vibration() ? "On" : "Off";
+        return NULL;
+    }
+    if (verb==activate) {
+        if (param == 0) wh360_buttonlayoutmenu();
+        else wh360_controlsmenu();
+    }
+    return NULL;
+}
+#endif
+
 static const char *configitem_showosd(enum configverb verb, int param) {
     (void)param;
     if (verb==activate) OSD_ShowDisplay(1);
@@ -1779,6 +1869,47 @@ void configmenu(void) {
             } callback;
         } value;
     } items[] = {
+#ifdef WITCHAVEN360
+        // Witchaven 360: the volumes, the resolution, and the controller. Not the display or colour depth, the same
+        // on the console whatever they say, nor the mouse, the keyboard's keys or the console, with no keyboard.
+        {
+            .type = callback,
+            .label = "Sound volume",
+            .value = { .callback = { configitem_setvolume, DIGI } }
+        },
+        {
+            .type = callback,
+            .label = "Music volume",
+            .value = { .callback = { configitem_setvolume, MIDI } }
+        },
+        { .type = spacer },
+        {
+            .type = callback,
+            .label = "Resolution",
+            .value = { .callback = { configitem_videomode, 2 } }
+        },
+        { .type = spacer },
+        {
+            .type = callback,
+            .label = "Invert look",
+            .value = { .callback = { configitem_controller, 2 } }
+        },
+        {
+            .type = callback,
+            .label = "Vibration",
+            .value = { .callback = { configitem_controller, 3 } }
+        },
+        {
+            .type = callback,
+            .label = "Button layout",
+            .value = { .callback = { configitem_controller, 0 } }
+        },
+        {
+            .type = callback,
+            .label = "Controls",
+            .value = { .callback = { configitem_controller, 1 } }
+        },
+#else
         {
             .type = callback,
             .label = "Sound volume",
@@ -1828,6 +1959,7 @@ void configmenu(void) {
             .label = "Show console",
             .value = { .callback = { configitem_showosd, 0 } }
         },
+#endif
     };
 
     int delaytime=totalclock+10, item, select=0, y;
@@ -1882,8 +2014,18 @@ void configmenu(void) {
         }
 
         clearallviews(0);
+#ifdef WITCHAVEN360
+        // Witchaven 360: the picture darker, so the settings read over it, as the controller's pages
+        // (xenon/wh_menu360.c).
+        if (svga) {
+            rotatesprite(svgaxoff,0<<15,svgascale,0,SVGAMENU,16,0,8+16+64,0,0,xdim-1,ydim-1);
+            rotatesprite(svgaxoff,ydim<<15,svgascale,0,SVGAMENU2,16,0,8+16+64,0,0,xdim-1,ydim-1);
+        }
+        rotatesprite(svgaxoff,0<<15,svgascale,0,TITLEPIC,16, 0,svgastat,0,0,xdim-1,ydim-1);
+#else
         if (svga) svgafullscreenpic(SVGAMENU, SVGAMENU2);
         rotatesprite(svgaxoff,0<<15,svgascale,0,TITLEPIC,0, 0,svgastat,0,0,xdim-1,ydim-1);
+#endif
 
         y=24;
         for (item=0; item<(int)Barraylen(items); item++) {

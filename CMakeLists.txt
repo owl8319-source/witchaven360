@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.25)
 project(witchaven360 C)
 
 # Keep the same as WITCHAVEN360_VERSION below and xsdk_add_xex's VERSION.
-set(WITCHAVEN360_VERSION "0.1")
+set(WITCHAVEN360_VERSION "0.2")
 
 find_package(SDL3 CONFIG REQUIRED)
 
@@ -70,21 +70,27 @@ set(GAME_SOURCES
 	src/whtag.c
 	libsmacker/smacker.c)
 
-# The Xbox 360's side: the platform layer, the controller, the sound driver, the version, two POSIX calls xsdk
-# lacks, and the data files kept in memory.
+# The Xbox 360's side: the platform layer, the controller and its Settings pages, the keyboard for naming saves, the
+# sound effects' and the music's drivers, the version, two POSIX calls xsdk lacks, the data files kept in memory, and
+# the music's OPL3 chip (Nuked OPL3, from Heretic 360).
 set(PORT_SOURCES
 	xenon/xenonlayer.c
 	xenon/wh_pad.c
+	xenon/wh_menu360.c
+	xenon/wh_xam.c
 	xenon/driver_sdl3.c
+	xenon/driver_opl.c
 	xenon/version.c
 	xenon/posix_shims.c
-	xenon/memfiles.c)
+	xenon/memfiles.c
+	opl/opl3.c)
 
 add_executable(witchaven ${PORT_SOURCES} ${ENGINE_SOURCES} ${AUDIOLIB_SOURCES} ${GAME_SOURCES})
 set_target_properties(witchaven PROPERTIES C_STANDARD 99 C_EXTENSIONS ON)
 
 target_include_directories(witchaven PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/xenon"
+	"${CMAKE_CURRENT_SOURCE_DIR}/opl"
 	"${CMAKE_CURRENT_SOURCE_DIR}/src"
 	"${CMAKE_CURRENT_SOURCE_DIR}/jfbuild/include"
 	"${CMAKE_CURRENT_SOURCE_DIR}/jfbuild/src"
@@ -108,6 +114,7 @@ target_compile_options(witchaven PRIVATE
 	-Wall
 	-Wno-unused-parameter
 	-Wno-unused-variable
+	-Wno-unused-function
 	-Wno-unused-but-set-variable
 	-Wno-pointer-sign
 	-Wno-char-subscripts)
@@ -121,4 +128,4 @@ target_link_options(witchaven PRIVATE
 # Writes witchaven_shaders.h, with blit_vert and blit_frag.
 xsdk_add_shaders(witchaven xenon/blit.vert xenon/blit.frag)
 # A title ID of its own ("WH36") and the name Aurora and the dashboard show.
-xsdk_add_xex(witchaven TITLE_ID 0x57483336 NAME "Witchaven" VERSION 0.1.0.0)
+xsdk_add_xex(witchaven TITLE_ID 0x57483336 NAME "Witchaven" VERSION 0.2.0.0)

@@ -35,6 +35,11 @@
 # include "driver_sdl.h"
 #endif
 
+#ifdef WITCHAVEN360
+// Witchaven 360: the console's music, an OPL3 synthesizer (xenon/driver_opl.c), on the SDL entry.
+# include "driver_opl.h"
+#endif
+
 #if defined __APPLE__ && !defined NO_COREAUDIO
 # include "driver_coreaudio.h"
 #endif
@@ -273,7 +278,17 @@ static struct {
         SDLDrv_CD_Pause,
         SDLDrv_CD_IsPlaying,
         SDLDrv_CD_SetVolume,
+      #ifdef WITCHAVEN360
+        OPLDrv_MIDI_Init,
+        OPLDrv_MIDI_Shutdown,
+        OPLDrv_MIDI_StartPlayback,
+        OPLDrv_MIDI_HaltPlayback,
+        OPLDrv_MIDI_SetTempo,
+        OPLDrv_MIDI_Lock,
+        OPLDrv_MIDI_Unlock,
+      #else
         UNSUPPORTED_MIDI,
+      #endif
     #else
         UNSUPPORTED_COMPLETELY,
     #endif

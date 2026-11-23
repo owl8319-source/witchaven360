@@ -304,8 +304,12 @@ SND_LoadSongs(unsigned short which)
 
 	index=songsperlevel*which;
 
+#ifndef WITCHAVEN360
 	index+=songelements;	// Skip FM.
 	index+=songelements;	// Skip AWE32.
+#endif
+	// Witchaven 360: the FM arrangement, written for the Sound Blaster's OPL chip, which the console's music plays
+	// (xenon/driver_opl.c), with melodic.bnk and drum.bnk.
 
 	BaseSongPtr = SND_LoadMIDISong(index+BASE_SONG, &BaseSongLen);
 	EmbSongPtr = SND_LoadMIDISong(index+EMB_SONG, &EmbSongLen);
@@ -378,9 +382,16 @@ SND_MenuMusic(int choose)
 
 	SND_SongFlush();
 
+#ifdef WITCHAVEN360
+	// Witchaven 360: the FM arrangements, as SND_LoadSongs takes.
+	if(choose==MENUSONG)
+		BaseSongPtr = SND_LoadMIDISong((totallevels*songsperlevel)+BASE_SONG, &BaseSongLen);
+	else BaseSongPtr = SND_LoadMIDISong((totallevels*songsperlevel)+3+BASE_SONG, &BaseSongLen);
+#else
 	if(choose==MENUSONG)
 		BaseSongPtr = SND_LoadMIDISong((totallevels*songsperlevel)+BASE_SONG+2, &BaseSongLen);
 	else BaseSongPtr = SND_LoadMIDISong((totallevels*songsperlevel)+3+BASE_SONG+2, &BaseSongLen);
+#endif
 
 	SND_StartMIDISong(BASE_SONG);
 }

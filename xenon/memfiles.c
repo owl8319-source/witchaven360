@@ -83,14 +83,14 @@ static int EndsWith(const char *name, const char *ending)
     return n >= e && !strcmp(name + n - e, ending);
 }
 
-// The data files: the tiles, the maps, the palette and shading tables, the sounds, the music and films. Not the
-// settings or the saves (svgn*.dat), which change.
+// The data files: the tiles, the maps, the palette and shading tables, the sounds and the music. Not the settings or
+// the saves (svgn*.dat), which change, nor the opening film (intro.smk, 43 MB), which the game reads whole itself, once.
 static int IsGameData(const char *name)
 {
     return (!strncmp(name, "tiles", 5) && EndsWith(name, ".art")) ||
            (!strncmp(name, "level", 5) && EndsWith(name, ".map")) ||
            !strcmp(name, "palette.dat") || !strcmp(name, "lookup.dat") || !strcmp(name, "tables.dat") ||
-           !strcmp(name, "joesnd") || !strcmp(name, "songs") || EndsWith(name, ".smk");
+           !strcmp(name, "joesnd") || !strcmp(name, "songs");
 }
 
 // The file in memory, read from the drive the first time; NULL if it can't be read (the real open then says why).

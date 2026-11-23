@@ -133,8 +133,14 @@ smkplayseq(char *name)
           nowtime = (double)getusecticks();
 
           if (voice < 0) {
+#ifdef WITCHAVEN360
+               // Full volume, as the DOS player had it; at 63 the film's sound was a quarter as loud.
+               voice = FX_StartDemandFeedPlayback(smkplayfeeder, (int)smkaudrate[0],
+                    0, 255, 255, 255, 1, (unsigned int)-1);
+#else
                voice = FX_StartDemandFeedPlayback(smkplayfeeder, (int)smkaudrate[0],
                     0, 63, 63, 63, 1, (unsigned int)-1);
+#endif
                if (voice < 0) {
                     debugprintf("smkplayseq(\"%s\") failed to start audio playback\n", name);
                     ret = -1;

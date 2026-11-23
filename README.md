@@ -4,19 +4,20 @@ Witchaven (Capstone Software, 1995) on an RGH, JTAG or Bad Avatar Xbox 360, from
 [jfwhaven](https://github.com/jonof/jfwhaven), Jonathon Fowler's port of the source Les Bird released, built with
 [xsdk](https://github.com/xenosworks/xsdk) and [SDL-xenon](https://github.com/xenosworks/SDL-xenon), as
 [Heretic 360](https://github.com/owl8319-source/heretic360) is. The game runs on the Build engine's software
-renderer, drawn 4:3 in the middle of the 720p display, with the controller and sound effects.
+renderer, in true widescreen, with the music, the opening film, the controller (with vibration) and settings of its own.
 
 You need your own copy of Witchaven's data. It isn't included.
 
-![The main menu](screenshots/01-title-menu.png)
+![The main menu](screenshots/02-title-menu.png)
 
 | | |
 |---|---|
-| ![The settings, on Y](screenshots/02-settings.png) | ![The first level](screenshots/03-level-1.png) |
-| ![Through the arch](screenshots/04-through-the-arch.png) | ![A swing of the sword](screenshots/05-attack.png) |
-| ![The map, on Back](screenshots/06-map.png) | |
+| ![The first level](screenshots/06-level-1.png) | ![Exploring](screenshots/07-exploring.png) |
+| ![The map, on Back](screenshots/08-map.png) | ![The opening film](screenshots/01-opening-film.png) |
+| ![The settings, on Y](screenshots/03-settings.png) | ![The button layout](screenshots/04-button-layout.png) |
+| ![The controls](screenshots/05-controls.png) | |
 
-The screenshots are the frames the port draws, framed in the 1280x720 display as the console shows them.
+The screenshots are the frames the port draws, at the default 854x480.
 
 ## Building (WSL Debian)
 
@@ -36,8 +37,9 @@ files named in lower case, as the game asks for them:
 - `tiles000.art` to `tiles010.art`
 - `level1.map` to `level25.map` (and any others)
 - `palette.dat`, `lookup.dat`, `tables.dat`
-- `joesnd`, `songs`
-- `intro.smk`, the intro film, if you have it (it's on the CD; without it the game starts at the menu)
+- `joesnd`, `songs`, `melodic.bnk`, `drum.bnk` (the last two are the AdLib instruments the music plays with)
+- `intro.smk`, the opening film, from the CD's `WHAVEN` folder, if you have it (without it the game starts at the
+  menu)
 
 From PowerShell, with the console's address and Aurora's FTP login, a file at a time:
 
@@ -46,8 +48,8 @@ curl.exe -T \\wsl.localhost\Debian\home\<you>\witchaven360\build\witchaven.xex -
 curl.exe -T C:\path\to\TILES000.ART ftp://<console>/Hdd1/Homebrew/Witchaven/tiles000.art --user '<user>:<password>'
 ```
 
-Launch `witchaven.xex` from Aurora's file browser. The settings (`whaven.ini`), the saves (`svgn*.dat` and `svgm*.map`)
-and the log, `witchaven.log`, are written beside it:
+Launch `witchaven.xex` from Aurora's file browser. The settings (`whaven.ini`), the controller's (`controller.cfg`), the
+saves (`svgn*.dat` and `svgm*.map`) and the log, `witchaven.log`, are written beside it:
 
 ```
 curl.exe ftp://<console>/Hdd1/Homebrew/Witchaven/witchaven.log --user '<user>:<password>'
@@ -73,13 +75,21 @@ curl.exe ftp://<console>/Hdd1/Homebrew/Witchaven/witchaven.log --user '<user>:<p
 | Back | map | | |
 | Start | menu | | |
 
-## What this version does and doesn't do yet
+A, B or Start skips the opening film. The buttons can be changed in Settings > Button layout (all but Start, which
+always opens the menu), and Settings > Controls shows them on a picture of the controller.
 
-- **Does:** the game on the Build engine's software renderer, 640x480, drawn 4:3 in the middle of the 720p
-  display; sound effects; the controller; settings. The game's data is read into memory as it starts, so play never
-  waits on the hard drive.
-- **Not yet:** music (Witchaven's songs are MIDI, and there's no MIDI player yet, so it plays silence); naming saves
-  (the save screen wants a keyboard); widescreen.
+## What this version does
+
+- The game on the Build engine's software renderer, in true widescreen: 854x480 by default, or 1280x720, 640x480 or
+  the original 320x200 (Settings > Resolution), with the status bar's sides filled in with the game's own planks.
+- Sound effects, and the music played on an emulated OPL3 chip, as on an AdLib or Sound Blaster card.
+- The opening film.
+- Settings, on Y at the main menu: the sound and music volumes, the resolution, invert look, vibration, the button
+  layout and a picture of the controls. The version is in the bottom right of the main menu.
+- Saves named with the console's own keyboard.
+- Vibration: the controller rumbles when the player is hurt (harder the more it hurts), as each weapon strikes, as a
+  spell is cast and as something is picked up. It stops in the menus and when the Guide opens.
+- The game's data is read into memory as it starts, so play never waits on the hard drive.
 
 ## Layout
 
@@ -93,7 +103,13 @@ curl.exe ftp://<console>/Hdd1/Homebrew/Witchaven/witchaven.log --user '<user>:<p
     xsdk's GPU layer (`blit.vert`, `blit.frag`, as Heretic 360's), the controller through SDL3, the timer, the log
     (written by its own thread once a second, so the game never waits on the drive to log a line) and start.
   - `wh_pad.c`: the controller turned into the keys and stick movement Witchaven reads, one layout in the game and
-    another in the menus (it knows which by whether the game has read the controls in the last 200 ms).
+    another in the menus (it knows which by whether the game has read the controls in the last 200 ms); the button
+    layout, invert look and vibration, kept in `controller.cfg`.
+  - `wh_menu360.c`: the Settings > Button layout and Settings > Controls pages, and the version on the main menu.
+    `controls_art.h` is the controller picture (from `art/360_controller.svg`, by `tools/make_controls_art.py`).
+  - `wh_xam.c`: the console's keyboard, for naming saves.
+  - `driver_opl.c`: jfaudiolib's music driver: Witchaven's MIDI songs played on Nuked OPL3 (`opl/`) with the game's
+    AdLib instrument banks.
   - `driver_sdl3.c`: jfaudiolib's sound output on SDL3, in place of its SDL2 `driver_sdl.c`.
   - `memfiles.c`: the game's data files read whole into memory the first time they're opened. The link wraps
     `open`, `read`, `lseek`, `close` and `fstat` (`CMakeLists.txt`) so the engine reads them from there.
@@ -111,13 +127,24 @@ All under the `WITCHAVEN360` define.
   printed is already in `witchaven.log`, and that one wrote to the drive a line at a time).
 - `src/whsndmod.c`: the tables of where each sound and song is in `joesnd` and `songs` are little-endian, as the PC
   wrote them, and are read so.
-- `src/whaven.c`: always "portable": the settings and saves go beside the `.xex`.
+- `jfaudiolib/src/assmisc.h`: the byte order from the compiler too, so the MIDI player reads the songs right.
+- `jfaudiolib/src/drivers.c`: the music goes to `xenon/driver_opl.c`.
+- `src/whaven.c`: always "portable": the settings and saves go beside the `.xex`; 854x480 to start; the sides of the
+  status bar filled in.
 - `src/whinp.c`: `getinput` tells `xenon/wh_pad.c` the game, not a menu, is reading the controls.
+- `src/whsndmod.c`: the AdLib arrangement of each song, and the menu's two songs.
+- `src/whmenu.c`: the Settings items and pages, "Press Y for settings" and the version on the main menu, and the
+  keyboard on the save screen.
+- `src/whsmk.c`: the opening film's sound at full volume, as the DOS player had it.
+- `src/whplr.c`, `src/whobj.c`: the vibration: when the player is hurt, a weapon strikes, a spell is cast, something
+  is picked up.
 
 `CMakeLists.txt` builds with `-fsigned-char`: Witchaven and Build were written for x86, where `char` is signed.
 
 ## Changes
 
+- **0.2:** true widescreen; the music; the opening film; Settings pages for the button layout and controls; invert
+  look; vibration; saves named with the console's keyboard; the version on the main menu.
 - **0.1:** first version: the game, sound effects, the controller; the data read into memory at startup (for the
   second's pause opening a door).
 
@@ -125,6 +152,6 @@ All under the `WITCHAVEN360` define.
 
 Each part keeps its own: the Build engine is under Ken Silverman's licence (`jfbuild/buildlic.txt`: free,
 non-commercial distribution only), jfaudiolib and `xenon/driver_sdl3.c` under the GPL 2 or later (`COPYING.md`),
-libsmacker under the LGPL 2.1 or later. `NOTICES.md` has every notice a built `witchaven.xex` carries (the Build
-engine, jfaudiolib, libsmacker, xsdk, SDL); it goes beside the `.xex` in a release. Witchaven's data is Capstone
+libsmacker and Nuked OPL3 under the LGPL 2.1 or later, the controller picture under CC BY-SA 3.0 (`art/README.md`). `NOTICES.md` has every notice a built `witchaven.xex` carries (the Build
+engine, jfaudiolib, libsmacker, Nuked OPL3, the controller picture, xsdk, SDL); it goes beside the `.xex` in a release. Witchaven's data is Capstone
 Software's, not covered.
