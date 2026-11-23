@@ -1225,8 +1225,14 @@ static char smk_render_palette(struct smk_video_t * s, unsigned char * p, unsign
 			size --;
 
 			/* overflow: see if we write/read beyond 256colors, or overwrite own palette */
+#ifdef WITCHAVEN360
+			/* The colours come from oldPalette, a copy, so a source range overlapping the entries being written is
+				fine (Witchaven's intro.smk has one). */
+			if (i + count > 256 || src + count > 256) {
+#else
 			if (i + count > 256 || src + count > 256 ||
 				(src < i && src + count > i)) {
+#endif
 				fprintf(stderr, "libsmacker::palette_render(s,p,size) - ERROR: overflow, 0x40 attempt to copy %d entries from %d to %d\n", count, src, i);
 				goto error;
 			}

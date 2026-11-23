@@ -447,6 +447,11 @@ void sampletimer(void)
 
     now = TimerTics();
     n = (int)(now - timerlastsample);
+    if (n > 0 && xenon_system_ui_open()) {
+        // The game's clock stands still while the Guide is open, so the game waits behind it, as a 360 game pauses.
+        timerlastsample = now;
+        n = 0;
+    }
     if (n > 0) {
         totalclock += n;
         timerlastsample += n;

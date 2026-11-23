@@ -426,8 +426,16 @@ void help(void) {
 
     while (!exit) {
         handleevents();
+#ifdef WITCHAVEN360
+        // The pages on the controls, with the controller's buttons in place of the PC's keys (xenon/wh_menu360.c).
+        if (select < wh360_helppages())
+            wh360_helppage(select);
+        else
+#endif
+        {
         menubackground();
         menuwritesprite(0,0,thenames[select].helpnames,0,0,0);
+        }
         nextpage();
 
         if(totalclock >= goaltime) {
@@ -1827,6 +1835,22 @@ static const char *configitem_controller(enum configverb verb, int param) {
         else if (verb==draw) return xenon_pad_invert_look() ? "On" : "Off";
         return NULL;
     }
+    if (param == 4) {
+        // Brightness: the game's own (the PC's F10), 0 to 8, through the palette; kept in whaven.ini.
+        int b = gbrightness;
+        if (verb==activate || verb==increase) b = b >= 8 ? (verb==activate ? 0 : 8) : b + 1;
+        else if (verb==decrease) b = b > 0 ? b - 1 : 0;
+        else if (verb==draw) {
+            static char text[8];
+            snprintf(text, sizeof(text), "%d", gbrightness);
+            return text;
+        }
+        if (b != gbrightness) {
+            gbrightness = brightness = b;
+            setbrightness(b, palette, 0);
+        }
+        return NULL;
+    }
     if (param == 3) {
         // Vibration: the controller rumbles when hit, striking, casting and picking things up; kept in controller.cfg.
         if (verb==activate || verb==increase || verb==decrease) {
@@ -1887,6 +1911,11 @@ void configmenu(void) {
             .type = callback,
             .label = "Resolution",
             .value = { .callback = { configitem_videomode, 2 } }
+        },
+        {
+            .type = callback,
+            .label = "Brightness",
+            .value = { .callback = { configitem_controller, 4 } }
         },
         { .type = spacer },
         {

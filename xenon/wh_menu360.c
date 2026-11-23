@@ -7,12 +7,15 @@
 // Controls: the controller (art/360_controller.svg in Witchaven's palette, controls_art.h) over the title picture,
 // darkened, and what each button does now.
 //
-// Both are drawn as the settings menu draws itself: Witchaven's 640x480 screen in the middle of the display (svgaxoff,
+// Help: the main menu's Help pages on the controls, with the controller's buttons.
+//
+// All are drawn as the settings menu draws itself: Witchaven's 640x480 screen in the middle of the display (svgaxoff,
 // svgascale), the headings in the game's gold letters (THEFONT), the rows in the engine's 8x14 font.
 
 #include "icorp.h"
 #include "osd.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "wh_pad.h"
@@ -265,6 +268,140 @@ void wh360_controlsmenu(void)
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The version, bottom right of the display, in the main menu's white with a shadow.
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Help
+
+// The main menu's Help pages on weapons, spells, potions, movement and flying are pictures, with the PC's keys drawn
+// into them; these are drawn in their place, with the controller's buttons as Settings > Button layout has them. (The
+// credits after them are the game's own.)
+
+#define HELP_TOP 66
+#define HELP_ROW 22
+#define HELP_KEY_X 300
+#define HELP_WHAT_X 320
+
+// The buttons doing 'action', "A / B" if more than one, or "(no button)".
+static const char *ButtonsFor(int action, char *buf, int size)
+{
+    int b, n = 0;
+
+    buf[0] = 0;
+    for (b = 0; b < PAD_BUTTONS; b++) {
+        if (xenon_pad_action(b) != action) continue;
+        if (n++) strncat(buf, " / ", size - strlen(buf) - 1);
+        strncat(buf, xenon_pad_button_name(b), size - strlen(buf) - 1);
+    }
+    if (!n) snprintf(buf, size, "(no button)");
+    return buf;
+}
+
+// "LB / RB" for a previous and a next.
+static const char *Pair(int prev, int next, char *buf, int size)
+{
+    char a[48], b[48];
+
+    snprintf(buf, size, "%s / %s", ButtonsFor(prev, a, sizeof(a)), ButtonsFor(next, b, sizeof(b)));
+    return buf;
+}
+
+// A row: the button, right-aligned to the middle in gold, and what it does after it.
+static void HelpRow(int row, const char *key, const char *what)
+{
+    const int y = HELP_TOP + row * HELP_ROW;
+
+    Text(HELP_KEY_X - (int)strlen(key) * FONT_W * 65536 / svgascale, y, COLOUR_GOLD, key);
+    Text(HELP_WHAT_X, y, COLOUR_TEXT, what);
+}
+
+// A list in two columns, under the rows.
+static void HelpList(int row, const char *const *items, int count)
+{
+    const int half = (count + 1) / 2;
+    int i;
+
+    for (i = 0; i < count; i++)
+        Text(i < half ? 150 : 350, HELP_TOP + (row + i % half) * HELP_ROW, COLOUR_TEXT, items[i]);
+}
+
+int wh360_helppages(void)
+{
+    return 5;
+}
+
+void wh360_helppage(int page)
+{
+    static const char *const weapons[] = {
+        "Fists", "Dagger", "Short sword", "Morning star", "Broad sword",
+        "Battle axe", "Bow", "Throwing axe", "Magical sword", "Halberd",
+    };
+    static const char *const spells[] = {
+        "Scare", "Night vision", "Freeze", "Magic arrows", "Open doors", "Fly", "Fireball", "Nuke!",
+    };
+    static const char *const potions[] = {
+        "Blue: health", "Green: strength", "Orange: cure poison", "Red: resist fire", "Brown: invisibility",
+    };
+    char k[100];
+
+    Background(MENU_DARKNESS);
+
+    switch (page) {
+    case 0:
+        Heading(18, "weapons");
+        HelpRow(0, ButtonsFor(PA_ATTACK, k, sizeof(k)), "Use the weapon");
+        HelpRow(1, Pair(PA_PREV_WEAPON, PA_NEXT_WEAPON, k, sizeof(k)), "Previous / next weapon");
+        CentredText(320, HELP_TOP + 3 * HELP_ROW, COLOUR_GOLD, "The weapons, as you find them:");
+        HelpList(4, weapons, 10);
+        break;
+    case 1:
+        Heading(18, "spells");
+        HelpRow(0, ButtonsFor(PA_CAST, k, sizeof(k)), "Cast the spell chosen");
+        HelpRow(1, Pair(PA_PREV_SPELL, PA_NEXT_SPELL, k, sizeof(k)), "Previous / next spell");
+        CentredText(320, HELP_TOP + 3 * HELP_ROW, COLOUR_GOLD, "The spells, as you find them:");
+        HelpList(4, spells, 8);
+        break;
+    case 2:
+        Heading(18, "potions");
+        HelpRow(0, ButtonsFor(PA_DRINK, k, sizeof(k)), "Drink the potion chosen");
+        HelpRow(1, Pair(PA_PREV_POTION, PA_NEXT_POTION, k, sizeof(k)), "Previous / next potion");
+        CentredText(320, HELP_TOP + 3 * HELP_ROW, COLOUR_GOLD, "The potions:");
+        HelpList(4, potions, 5);
+        break;
+    case 3:
+        Heading(18, "movement");
+        HelpRow(0, "Left stick", "Move and strafe");
+        HelpRow(1, "Right stick", xenon_pad_invert_look() ? "Turn and look (inverted)" : "Turn and look");
+        HelpRow(2, ButtonsFor(PA_RUN, k, sizeof(k)), "Run, while held");
+        HelpRow(3, ButtonsFor(PA_USE, k, sizeof(k)), "Open doors, use switches");
+        HelpRow(4, ButtonsFor(PA_JUMP, k, sizeof(k)), "Jump");
+        HelpRow(5, ButtonsFor(PA_CROUCH, k, sizeof(k)), "Crouch");
+        HelpRow(6, ButtonsFor(PA_CENTRE, k, sizeof(k)), "Centre the view");
+        HelpRow(7, ButtonsFor(PA_MAP, k, sizeof(k)), "Map");
+        HelpRow(8, "D-pad up / down", "Zoom the map in / out");
+        HelpRow(9, "Start", "Menu");
+        break;
+    case 4:
+        Heading(18, "flying");
+        {
+            char pair[100], cast[48], line[200];
+            snprintf(line, sizeof(line), "Choose Fly (%s), cast it (%s), then:",
+                     Pair(PA_PREV_SPELL, PA_NEXT_SPELL, pair, sizeof(pair)), ButtonsFor(PA_CAST, cast, sizeof(cast)));
+            CentredText(320, HELP_TOP, COLOUR_GOLD, line);
+        }
+        HelpRow(2, ButtonsFor(PA_JUMP, k, sizeof(k)), "Fly up");
+        HelpRow(3, ButtonsFor(PA_CROUCH, k, sizeof(k)), "Fly down, and land on the ground");
+        {
+            int b, bound = 0;
+            for (b = 0; b < PAD_BUTTONS; b++) bound |= xenon_pad_action(b) == PA_END_FLYING;
+            if (bound) HelpRow(4, ButtonsFor(PA_END_FLYING, k, sizeof(k)), "End flying");
+        }
+        CentredText(320, HELP_TOP + 6 * HELP_ROW, COLOUR_TEXT, "Flying also ends when the spell wears off.");
+        CentredText(320, HELP_TOP + 7 * HELP_ROW, COLOUR_TEXT, "End flying can be given a button in Settings.");
+        break;
+    }
+
+    CentredText(320, 440, COLOUR_GOLD, "Left and right turn the pages - B goes back");
+}
 
 void wh360_drawversion(void)
 {

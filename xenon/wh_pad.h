@@ -16,6 +16,7 @@ enum {
     PA_NOTHING, PA_ATTACK, PA_CAST, PA_USE, PA_JUMP, PA_CROUCH, PA_DRINK,
     PA_PREV_WEAPON, PA_NEXT_WEAPON, PA_PREV_SPELL, PA_NEXT_SPELL, PA_PREV_POTION, PA_NEXT_POTION,
     PA_RUN, PA_CENTRE, PA_MAP,
+    PA_END_FLYING,
     PA_COUNT,
 };
 
@@ -39,5 +40,8 @@ void xenon_pad_save_layout(void);
 void wh360_buttonlayoutmenu(void);
 void wh360_controlsmenu(void);
 void wh360_drawversion(void);
+// The main menu's Help pages on the controls (wh360_helppages of them, before the credits), drawn without nextpage().
+int wh360_helppages(void);
+void wh360_helppage(int page);
 
 #endif

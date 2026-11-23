@@ -12,10 +12,10 @@ You need your own copy of Witchaven's data. It isn't included.
 
 | | |
 |---|---|
-| ![The first level](screenshots/06-level-1.png) | ![Exploring](screenshots/07-exploring.png) |
-| ![The map, on Back](screenshots/08-map.png) | ![The opening film](screenshots/01-opening-film.png) |
+| ![The first level](screenshots/07-level-1.png) | ![A thrust of the dagger](screenshots/08-attack.png) |
+| ![The map, on Back](screenshots/09-map.png) | ![The opening film](screenshots/01-opening-film.png) |
 | ![The settings, on Y](screenshots/03-settings.png) | ![The button layout](screenshots/04-button-layout.png) |
-| ![The controls](screenshots/05-controls.png) | |
+| ![The controls](screenshots/05-controls.png) | ![Help, with the controller's buttons](screenshots/06-help.png) |
 
 The screenshots are the frames the port draws, at the default 854x480.
 
@@ -64,28 +64,32 @@ curl.exe ftp://<console>/Hdd1/Homebrew/Witchaven/witchaven.log --user '<user>:<p
 | RT | attack | B or Start | back |
 | LT | cast the chosen spell | Y | settings (main menu) |
 | A | use (doors, switches) | | |
-| B | jump | | |
+| B | jump (flying: fly up) | | |
 | X | drink the chosen potion | | |
-| Y | crouch | | |
+| Y | crouch (flying: fly down, and land on the ground) | | |
 | LB / RB | previous / next weapon | | |
 | D-pad left / right | previous / next spell | | |
 | D-pad up / down | next / previous potion | | |
 | Left stick click | run, while held | | |
 | Right stick click | centre the view | | |
-| Back | map | | |
+| Back | map (D-pad up / down zoom it) | | |
 | Start | menu | | |
 
 A, B or Start skips the opening film. The buttons can be changed in Settings > Button layout (all but Start, which
-always opens the menu), and Settings > Controls shows them on a picture of the controller.
+always opens the menu); End flying, the PC's End key, can be given one there. Settings > Controls shows them on a
+picture of the controller, and the main menu's Help pages list them. Opening the Guide pauses the game.
 
 ## What this version does
 
 - The game on the Build engine's software renderer, in true widescreen: 854x480 by default, or 1280x720, 640x480 or
-  the original 320x200 (Settings > Resolution), with the status bar's sides filled in with the game's own planks.
+  the original 320x200 (Settings > Resolution), with the status bar's sides filled in with the game's own planks,
+  and the weapons in the player's hands as large as in 4:3, reaching the screen's edges.
 - Sound effects, and the music played on an emulated OPL3 chip, as on an AdLib or Sound Blaster card.
 - The opening film.
-- Settings, on Y at the main menu: the sound and music volumes, the resolution, invert look, vibration, the button
-  layout and a picture of the controls. The version is in the bottom right of the main menu.
+- Settings, on Y at the main menu: the sound and music volumes, the resolution, the brightness, invert look,
+  vibration, the button layout and a picture of the controls. The version is in the bottom right of the main menu.
+- Help pages on the controls with the controller's buttons, as the layout has them, in place of the PC's keys.
+- The map zooms with the D-pad; flying down to the ground lands; the Guide pauses the game.
 - Saves named with the console's own keyboard.
 - Vibration: the controller rumbles when the player is hurt (harder the more it hurts), as each weapon strikes, as a
   spell is cast and as something is picked up. It stops in the menus and when the Guide opens.
@@ -105,7 +109,8 @@ always opens the menu), and Settings > Controls shows them on a picture of the c
   - `wh_pad.c`: the controller turned into the keys and stick movement Witchaven reads, one layout in the game and
     another in the menus (it knows which by whether the game has read the controls in the last 200 ms); the button
     layout, invert look and vibration, kept in `controller.cfg`.
-  - `wh_menu360.c`: the Settings > Button layout and Settings > Controls pages, and the version on the main menu.
+  - `wh_menu360.c`: the Settings > Button layout and Settings > Controls pages, the Help pages on the controls, and
+    the version on the main menu.
     `controls_art.h` is the controller picture (from `art/360_controller.svg`, by `tools/make_controls_art.py`).
   - `wh_xam.c`: the console's keyboard, for naming saves.
   - `driver_opl.c`: jfaudiolib's music driver: Witchaven's MIDI songs played on Nuked OPL3 (`opl/`) with the game's
@@ -124,25 +129,33 @@ All under the `WITCHAVEN360` define.
   the BSDs', macOS's or Windows'.
 - `jfbuild/src/engine.c`: `loadtables` checks its sine and angle tables' checksums against the tables as a
   little-endian machine holds them, the 360 being big-endian; `buildsetlogfile` opens no second log (everything
-  printed is already in `witchaven.log`, and that one wrote to the drive a line at a time).
+  printed is already in `witchaven.log`, and that one wrote to the drive a line at a time); `rotatesprite` sizes and
+  places the pictures drawn over the view (the weapons) as a 4:3 screen of the same height would, in widescreen.
 - `src/whsndmod.c`: the tables of where each sound and song is in `joesnd` and `songs` are little-endian, as the PC
   wrote them, and are read so.
 - `jfaudiolib/src/assmisc.h`: the byte order from the compiler too, so the MIDI player reads the songs right.
 - `jfaudiolib/src/drivers.c`: the music goes to `xenon/driver_opl.c`.
 - `src/whaven.c`: always "portable": the settings and saves go beside the `.xex`; 854x480 to start; the sides of the
-  status bar filled in.
-- `src/whinp.c`: `getinput` tells `xenon/wh_pad.c` the game, not a menu, is reading the controls.
+  status bar filled in; `lookup.dat` read before the opening film (the drive spins down while it plays).
+- `src/whinp.c`: `getinput` tells `xenon/wh_pad.c` the game, not a menu, is reading the controls; flying down to the
+  ground lands.
 - `src/whsndmod.c`: the AdLib arrangement of each song, and the menu's two songs.
-- `src/whmenu.c`: the Settings items and pages, "Press Y for settings" and the version on the main menu, and the
-  keyboard on the save screen.
+- `src/whmenu.c`: the Settings items and pages (and Brightness, the PC's F10), "Press Y for settings" and the version
+  on the main menu, the keyboard on the save screen, and the Help pages on the controls.
 - `src/whsmk.c`: the opening film's sound at full volume, as the DOS player had it.
 - `src/whplr.c`, `src/whobj.c`: the vibration: when the player is hurt, a weapon strikes, a spell is cast, something
-  is picked up.
+  is picked up. `whplr.c` also moves the weapons out to the edges of a widescreen display, and clears the eight spells,
+  not nine (the ninth was written into the treasures and potions).
+- `libsmacker/smacker.c`: a check on the film's palette changes that refused one Witchaven's film makes (its colours
+  are copied from a copy, so a source overlapping the colours being written is fine).
 
 `CMakeLists.txt` builds with `-fsigned-char`: Witchaven and Build were written for x86, where `char` is signed.
 
 ## Changes
 
+- **0.2.1:** the weapons full size in widescreen, reaching the screen's edges; Help pages with the controller's
+  buttons; Brightness in Settings; the map zooms with the D-pad; flying down to the ground lands, and End flying can be
+  given a button; the Guide pauses the game; the opening film's colours right throughout, and no pause after it.
 - **0.2:** true widescreen; the music; the opening film; Settings pages for the button layout and controls; invert
   look; vibration; saves named with the console's keyboard; the version on the main menu.
 - **0.1:** first version: the game, sound effects, the controller; the data read into memory at startup (for the

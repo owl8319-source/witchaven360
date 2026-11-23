@@ -23,6 +23,9 @@
 //   Right stick click   centre the view
 //   Back            map
 //   Start           menu (Escape), always
+//   (End flying, the PC's End key, on no button unless given one; flying down to the ground lands too, whinp.c)
+//
+// With the map open, D-pad up and down zoom it in and out, whatever they do in the game.
 //
 // With Settings > Vibration on, the controller rumbles as the game hits the player, as a weapon strikes, as a spell is
 // cast and as something is picked up (wh360_rumble, called from whplr.c and whobj.c). Not in the menus, and not while
@@ -87,11 +90,11 @@ static const char *const button_ids[PAD_BUTTONS] = {
 static const char *const action_names[PA_COUNT] = {
     "Nothing", "Attack", "Cast spell", "Use", "Jump / fly up", "Crouch / fly down", "Drink potion",
     "Previous weapon", "Next weapon", "Previous spell", "Next spell", "Previous potion", "Next potion",
-    "Run", "Centre view", "Map",
+    "Run", "Centre view", "Map", "End flying",
 };
 static const char *const action_ids[PA_COUNT] = {
     "nothing", "attack", "cast", "use", "jump", "crouch", "drink", "prevweapon", "nextweapon", "prevspell",
-    "nextspell", "prevpotion", "nextpotion", "run", "centre", "map",
+    "nextspell", "prevpotion", "nextpotion", "run", "centre", "map", "endfly",
 };
 
 static const int default_layout[PAD_BUTTONS] = {
@@ -392,6 +395,7 @@ static void DoAction(struct player *plr, int button, int action)
         case PA_RUN:         HoldKey(button, keys[KEYRUN]); break;
         case PA_CENTRE:      HoldKey(button, keys[KEYCNTR]); break;
         case PA_MAP:         HoldKey(button, keys[KEYMAP]); break;
+        case PA_END_FLYING:  HoldKey(button, keys[KEYUNCAST]); break;
         case PA_PREV_WEAPON: if (Pressed(button)) ChangeWeapon(plr, -1); break;
         case PA_NEXT_WEAPON: if (Pressed(button)) ChangeWeapon(plr, 1); break;
         case PA_PREV_SPELL:  if (Pressed(button)) ChangeSpell(plr, -1); break;
@@ -400,10 +404,21 @@ static void DoAction(struct player *plr, int button, int action)
     }
 }
 
+static int zoom_in_down = 0, zoom_out_down = 0;
+
+// A key held while 'down', pressed and let go of as that changes.
+static void SetZoom(int code, int *state, int down)
+{
+    if (down == *state) return;
+    if (down) KeyDown(code);
+    else KeyUp(code);
+    *state = down;
+}
+
 static void GameControls(void)
 {
     struct player *plr = &player[pyrn];
-    int i;
+    int i, map_open;
 
     if (!joystick_on) {
         // The game reads the sticks only with its joystick on (whaven.c's option[3]).
@@ -421,9 +436,23 @@ static void GameControls(void)
         joyaxis[0] = joyaxis[1] = joyaxis[2] = joyaxis[3] = 0;
     }
 
+    // With the map open, D-pad up and down zoom it in and out (the PC's + and -) in place of what they do in the game.
+    map_open = plr->dimension == 2;
     for (i = 0; i < PAD_BUTTONS; i++) {
+        if (map_open && (i == PAD_DUP || i == PAD_DDOWN)) {
+            if (was_held[i]) {
+                // Let go of what it does in the game, if it was held as the map opened.
+                const int h = held[i];
+                held[i] = 0;
+                DoAction(plr, i, layout[i]);
+                held[i] = h;
+            }
+            continue;
+        }
         DoAction(plr, i, layout[i]);
     }
+    SetZoom(keys[KEYZOOMI], &zoom_in_down, map_open && held[PAD_DUP]);
+    SetZoom(keys[KEYZOOMO], &zoom_out_down, map_open && held[PAD_DDOWN]);
     HoldKey(PB_START, SC_ESCAPE);
 }
 
@@ -489,6 +518,7 @@ void xenon_pad_update(void)
         // Between the game and the menus, let every key go, so nothing stays held from the other side. The buttons
         // still held count as pressed again on the new side only once they're let go and pressed.
         xenon_releaseallkeys();
+        zoom_in_down = zoom_out_down = 0;
         memcpy(was_held, held, sizeof(held));
         last_in_game = in_game;
         // And a rumble from the game stops as the menus open.

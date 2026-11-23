@@ -731,6 +731,12 @@ syncprocessinput(short snum) {
 	else {
 		dophysics(plr,goalz,0,v);
 	}
+#ifdef WITCHAVEN360
+	// Witchaven 360: flying down to the ground lands, ending the fly spell (the PC's End key), as the controller has
+	// no key to spare for it unless given one in Settings > Button layout.
+	if (plr->orbactive[5] > 0 && k.flydn && plr->z >= loz-(plr->height<<8))
+		plr->orbactive[5]=-1;
+#endif
 	if (!onground && plr->onsomething) {
 		if (plr->fallz > 32768L) {
 			if(rand()%2)

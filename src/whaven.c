@@ -1409,6 +1409,14 @@ int app_main(int argc,const char * const argv[]) {
     setup3dscreen();
     SND_Startup();
 
+#ifdef WITCHAVEN360
+    // Read lookup.dat into memory before the film: the console's drive spins down in the five minutes it plays, and
+    // reading the file after it waited two seconds for the drive to spin up again.
+    {
+        int fh = kopen4load("lookup.dat", 0);
+        if (fh >= 0) kclose(fh);
+    }
+#endif
     smkplayseq("intro");
     setbrightness(brightness, palette, 0);
 

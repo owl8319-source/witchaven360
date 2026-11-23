@@ -645,7 +645,12 @@ void playerdead(struct player *plr) {
 		for(i=0;i<=9;i++) {
 			plr->ammo[i]=0;
 			plr->weapon[i]=0;
+#ifdef WITCHAVEN360
+			// There are MAXNUMORBS (8) spells: i < 9 wrote a ninth, into treasure[0] and potion[0].
+			if( i < MAXNUMORBS ) {
+#else
 			if( i < 9 ) {
+#endif
 				plr->orb[i]=0;
 				plr->orbammo[i]=0;
 			}
@@ -656,7 +661,12 @@ void playerdead(struct player *plr) {
 				plr->ammo[i]=40;
 				plr->weapon[i]=1;
 			}
+#ifdef WITCHAVEN360
+			// There are MAXNUMORBS (8) spells: i < 9 wrote a ninth, into treasure[0] and potion[0].
+			if( i < MAXNUMORBS ) {
+#else
 			if( i < 9 ) {
+#endif
 				plr->orb[i]=0;
 				plr->orbammo[i]=0;
 			}
@@ -867,7 +877,12 @@ void initplayersprite(void) {
 		for(i=0;i<=9;i++) {
 			plr->ammo[i]=0;
 			plr->weapon[i]=0;
+#ifdef WITCHAVEN360
+			// There are MAXNUMORBS (8) spells: i < 9 wrote a ninth, into treasure[0] and potion[0].
+			if( i < MAXNUMORBS ) {
+#else
 			if( i < 9 ) {
+#endif
 				plr->orb[i]=0;
 				plr->orbammo[i]=0;
 			}
@@ -878,7 +893,12 @@ void initplayersprite(void) {
 				plr->ammo[i]=40;
 				plr->weapon[i]=1;
 			}
+#ifdef WITCHAVEN360
+			// There are MAXNUMORBS (8) spells: i < 9 wrote a ninth, into treasure[0] and potion[0].
+			if( i < MAXNUMORBS ) {
+#else
 			if( i < 9 ) {
+#endif
 				plr->orb[i]=0;
 				plr->orbammo[i]=0;
 			}
@@ -1757,6 +1777,31 @@ void victory(void) {
 	escapetomenu=1;
 }
 
+#ifdef WITCHAVEN360
+// Witchaven 360: the weapon in the player's hands, on a screen wider than 4:3. The pictures were drawn for a 320-wide
+// screen, and are cut off where its edges were: a picture against the right edge would show that cut in the middle of
+// a widescreen display. So each is moved out as far as the screen is wider than 4:3: against the right edge, all the
+// way right; against the left, all the way left; between, in proportion to the space it leaves on each side, so a
+// swing moves smoothly from one to the other.
+static void wh360_weaponsprite(int thex, int they, short tilenum, signed char shade, char stat,
+		unsigned char dapalnum)
+{
+	if (widescreen && (stat & 2) && tilenum >= 0 && tilenum < MAXTILES && tilesizx[tilenum] > 0) {
+		int width = windowx2 - windowx1 + 1;
+		int w43 = scale(width, ydim * 4, xdim * 3);
+		int margin = w43 > 0 ? scale(320, width - w43, 2 * w43) : 0;
+		int left = (stat & 8) ? thex - tilesizx[tilenum] : thex;
+		int gapl = left > 0 ? left : 0;
+		int gapr = 320 - (left + tilesizx[tilenum]);
+		if (gapr < 0) gapr = 0;
+		if (margin > 0 && gapl + gapr > 0)
+			thex += scale(margin, gapl - gapr, gapl + gapr);
+	}
+	overwritesprite(thex, they, tilenum, shade, stat, dapalnum);
+}
+#define overwritesprite wh360_weaponsprite
+#endif
+
 void drawweapons(struct player *plr) {
 
 	int dax, day;
@@ -2399,6 +2444,9 @@ void drawweapons(struct player *plr) {
 
 
 }
+#ifdef WITCHAVEN360
+#undef overwritesprite
+#endif
 
 void castaorb( struct player *plr ) {
 
